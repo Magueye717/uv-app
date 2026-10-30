@@ -1,5 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
+import { useEffect } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -7,11 +8,16 @@ import { AdCarousel, AlertStrip, CaravanCard, RestoCard } from '@/components/hom
 import { headlines, services } from '@/constants/data';
 import { colors, radii, shadow } from '@/constants/theme';
 import { useAuth } from '@/context/AuthContext';
+import { setupNotifications } from '@/lib/notifications';
 
 export default function HomeScreen() {
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
   const name = user?.firstName ?? 'Awa';
+
+  useEffect(() => {
+    setupNotifications();
+  }, []);
 
   return (
     <View style={styles.root}>
@@ -33,7 +39,6 @@ export default function HomeScreen() {
 
       <ScrollView contentContainerStyle={styles.body} showsVerticalScrollIndicator={false}>
         <AlertStrip />
-        <AdCarousel />
         <CaravanCard />
         <RestoCard />
 
@@ -41,18 +46,17 @@ export default function HomeScreen() {
         <View style={styles.grid}>
           {services.map((s) => (
             <Pressable key={s.key} style={styles.service} onPress={() => router.push(s.href as never)}>
-              <View style={[styles.serviceIcon, { backgroundColor: s.bg }]}>
-                <Ionicons name={s.icon} size={22} color={s.tint} />
+              <View style={styles.serviceIcon}>
+                <Ionicons name={s.icon} size={22} color={colors.primary} />
               </View>
               <Text style={styles.serviceLabel}>{s.label}</Text>
             </Pressable>
           ))}
         </View>
 
-        <View style={styles.sectionRow}>
-          <Text style={styles.section}>À la une</Text>
-          <Text style={styles.link}>Tout voir</Text>
-        </View>
+        <AdCarousel />
+
+        <Text style={styles.section}>À la une</Text>
         {headlines.map((h) => (
           <View key={h.id} style={[styles.news, shadow.card]}>
             <View style={[styles.newsIcon, { backgroundColor: h.bg }]}>
@@ -111,19 +115,18 @@ const styles = StyleSheet.create({
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: colors.orange,
+    backgroundColor: colors.danger,
   },
   body: { padding: 20, paddingBottom: 32, gap: 14 },
   muted: { color: colors.muted2, fontSize: 13, marginTop: 2 },
   section: { fontSize: 20, fontWeight: '800', color: colors.navy, marginTop: 8 },
-  sectionRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  link: { color: colors.primary, fontWeight: '700', marginTop: 8 },
   grid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' },
   service: { width: '23%', alignItems: 'center', gap: 8, marginBottom: 14 },
   serviceIcon: {
     width: 64,
     height: 64,
     borderRadius: 18,
+    backgroundColor: '#E8F0FF',
     alignItems: 'center',
     justifyContent: 'center',
   },

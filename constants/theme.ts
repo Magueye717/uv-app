@@ -19,6 +19,12 @@ export const colors = {
   purple: '#7B6CF6',
   green: '#2E9B57',
   tabInactive: '#9AA3B8',
+  // Darker shades for small colored text on white (≥ 4.5:1 contrast).
+  successText: '#157A43',
+  warningText: '#9A5B00',
+  orangeText: '#B8540F',
+  dangerText: '#C23A4A',
+  purpleText: '#5A4BD1',
 };
 
 export const radii = {

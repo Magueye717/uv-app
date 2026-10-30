@@ -8,6 +8,7 @@ import { CaravanSummary } from '@/components/caravan';
 import { BackButton } from '@/components/ui';
 import { caravans, formatFcfa, paymentMethods } from '@/constants/data';
 import { colors, radii, shadow } from '@/constants/theme';
+import { scheduleCaravanReminder } from '@/lib/notifications';
 
 const SEATS_PER_ROW = 4;
 const SERVICE_FEE = 0;
@@ -36,6 +37,7 @@ export default function CaravaneReservation() {
   const total = c.price + SERVICE_FEE;
 
   const pay = () => {
+    scheduleCaravanReminder(c);
     const method = paymentMethods.find((m) => m.id === payment)?.name;
     Alert.alert('Paiement envoyé', `Valide le paiement de ${formatFcfa(total)} sur ${method}. Ton ticket arrivera par notification.`, [
       { text: 'OK', onPress: () => router.back() },

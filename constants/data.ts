@@ -49,7 +49,7 @@ export const headlines: {
     id: 'h1',
     tag: 'Élections',
     icon: 'megaphone-outline',
-    tint: colors.purple,
+    tint: colors.purpleText,
     bg: '#EEE8FF',
     title: 'Élections des délégués',
     subtitle: 'Vote jeudi 06 nov. · 8h-17h · salle polyvalente',
@@ -59,7 +59,7 @@ export const headlines: {
     id: 'h2',
     tag: 'Resto 1',
     icon: 'restaurant-outline',
-    tint: colors.danger,
+    tint: colors.dangerText,
     bg: '#FDECEE',
     title: 'Thiébou dieun épuisé',
     subtitle: 'Plus de portions ce midi · Vermicelle et Mafé yap encore servis',
@@ -69,7 +69,7 @@ export const headlines: {
     id: 'h3',
     tag: 'Resto 2',
     icon: 'restaurant-outline',
-    tint: colors.orange,
+    tint: colors.orangeText,
     bg: '#FFE8D4',
     title: 'Omelette frites bientôt épuisée',
     subtitle: 'Plus que 12 portions pour le dîner',
@@ -79,7 +79,7 @@ export const headlines: {
     id: 'h4',
     tag: 'Bourses',
     icon: 'wallet-outline',
-    tint: colors.green,
+    tint: colors.successText,
     bg: '#E5F8EC',
     title: 'Paiement des bourses le 05 nov.',
     subtitle: 'Virement sur Wave et Orange Money',
@@ -90,19 +90,28 @@ export const headlines: {
 
 export const campusAlert = {
   id: 'a1',
+  href: '/notifications',
   icon: 'warning-outline' as Ionicon,
   title: "Coupure d'eau · Village E",
   subtitle: "Aujourd'hui de 10h à 16h",
 };
 
-export const adBanners = [
+// `href` = screen in the app, `url` = sponsor's website. With neither, the banner is display-only.
+export const adBanners: {
+  id: string;
+  title: string;
+  subtitle: string;
+  cta: string;
+  bg: string;
+  href?: string;
+  url?: string;
+}[] = [
   {
     id: 'ad1',
     title: '-20% sur vos forfaits\ninternet étudiants',
     subtitle: "Offre valable jusqu'au 30 nov.",
     cta: "J'en profite",
     bg: colors.purple,
-    href: '/notifications',
   },
   {
     id: 'ad2',

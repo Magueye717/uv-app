@@ -1,11 +1,19 @@
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 
-import { AuthProvider } from '@/context/AuthContext';
+import { AuthProvider, useAuth } from '@/context/AuthContext';
+import { useNotificationRouting } from '@/lib/notifications';
+
+function NotificationRouter() {
+  const { user } = useAuth();
+  useNotificationRouting(!!user);
+  return null;
+}
 
 export default function RootLayout() {
   return (
     <AuthProvider>
+      <NotificationRouter />
       <StatusBar style="light" />
       <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: '#F3F5FB' } }}>
         <Stack.Screen name="index" />
