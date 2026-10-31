@@ -1,14 +1,16 @@
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Alert, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { CaravanSummary, FillBar } from '@/components/caravan';
-import { EmptyState } from '@/components/states';
+import { EmptyState, ErrorState, SkeletonCard } from '@/components/states';
 import { Field, Segmented } from '@/components/ui';
-import { caravans, formatFcfa, type Caravan, type CaravanDirection } from '@/constants/data';
+import { formatFcfa, type Caravan, type CaravanDirection } from '@/constants/data';
 import { colors, radii, shadow, typo } from '@/constants/theme';
-import { useTickets } from '@/context/TicketsContext';
+import { useCaravans } from '@/context/CaravansContext';
+import { dayLabel, hourLabel } from '@/features/caravans/api';
+import { ApiError } from '@/lib/api';
 import { matches } from '@/lib/search';
 
 /**
@@ -28,16 +30,35 @@ export function CaravanBoard() {
   const [direction, setDirection] = useState<CaravanDirection>('aller');
   const [query, setQuery] = useState('');
   const q = query.trim();
+  const { caravans, tickets, incoming, loading, error, refresh, accept, decline } = useCaravans();
   const list = caravans
     .filter((c) => c.direction === direction)
     .map((c) => ({ c, via: q ? findStop(c, q) : null }))
     .filter(({ c, via }) => !q || via || matches(q, [c.from, c.to, c.organizer.name]));
-  const { tickets, ticketFor } = useTickets();
-  const active = tickets.filter((t) => t.status === 'active');
+  const active = tickets.filter((t) => t.status === 'active' && Date.parse(t.event.startsAt) > Date.now() - 12 * 3_600_000);
+
+  const answer = (id: string, yes: boolean) =>
+    (yes ? accept(id).then((ticketId) => ticketId && router.push(`/billet/${ticketId}`)) : decline(id)).catch((err) =>
+      Alert.alert('Action impossible', err instanceof ApiError ? err.message : 'Réessaie dans un instant.'),
+    );
+
+  if (loading) {
+    return (
+      <View style={styles.body}>
+        <SkeletonCard />
+        <SkeletonCard />
+      </View>
+    );
+  }
+  if (error && caravans.length === 0) return <ErrorState text={error} onRetry={refresh} />;
 
   return (
     <>
-      <ScrollView contentContainerStyle={styles.body} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+      <ScrollView
+        contentContainerStyle={styles.body}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+        refreshControl={<RefreshControl refreshing={false} onRefresh={refresh} />}>
         <View style={styles.hero}>
           <View style={{ flex: 1 }}>
             <Text style={styles.heroTitle}>Réserve ton billet</Text>
@@ -48,28 +69,51 @@ export function CaravanBoard() {
           </View>
         </View>
 
+        {/* A friend gave me a ticket: it's mine once I accept. */}
+        {incoming.map((x) => (
+          <View key={x.id} style={[styles.ticket, shadow.card, { flexDirection: 'column', alignItems: 'stretch', gap: 10 }]}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+              <View style={styles.ticketIcon}>
+                <Ionicons name="gift-outline" size={20} color={colors.primary} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.ticketRoute}>{x.from.name} t’offre son billet</Text>
+                <Text style={styles.ticketMeta}>
+                  {x.event?.title} · {x.event ? `${dayLabel(Date.parse(x.event.startsAt))} · ${hourLabel(Date.parse(x.details.pickup.at))}` : ''} · Place {x.seat}
+                </Text>
+              </View>
+            </View>
+            <View style={{ flexDirection: 'row', gap: 8 }}>
+              <Pressable style={[styles.book, { flex: 1 }]} onPress={() => answer(x.id, true)} accessibilityRole="button">
+                <Text style={styles.bookText}>Accepter</Text>
+              </Pressable>
+              <Pressable style={[styles.book, styles.bookMine, { flex: 1 }]} onPress={() => answer(x.id, false)} accessibilityRole="button">
+                <Text style={[styles.bookText, { color: colors.primary }]}>Refuser</Text>
+              </Pressable>
+            </View>
+          </View>
+        ))}
+
         {active.length > 0 && (
           <View style={{ gap: 8 }}>
             <Text style={styles.section}>Mes billets</Text>
             {active.map((t) => {
-              const c = caravans.find((x) => x.id === t.caravanId);
-              if (!c) return null;
+              const at = Date.parse(t.event.startsAt);
               return (
                 <Pressable
                   key={t.id}
                   style={[styles.ticket, shadow.card]}
                   onPress={() => router.push(`/billet/${t.id}`)}
                   accessibilityRole="button"
-                  accessibilityLabel={`Billet ${c.from} vers ${c.to}, ${c.date}, place ${t.seat}`}>
+                  accessibilityLabel={`Billet ${t.event.title}, ${dayLabel(at)}, place ${t.seat}`}>
                   <View style={styles.ticketIcon}>
                     <Ionicons name="qr-code-outline" size={20} color={colors.primary} />
                   </View>
                   <View style={{ flex: 1 }}>
-                    <Text style={styles.ticketRoute}>
-                      {c.from} → {c.to}
-                    </Text>
+                    <Text style={styles.ticketRoute}>{t.event.title}</Text>
                     <Text style={styles.ticketMeta}>
-                      {c.date} · {t.pickup.time} · Place {t.seat}
+                      {dayLabel(at)} · {hourLabel(Date.parse(t.details.pickup.at))} · Place {t.seat}
+                      {t.transfer?.status === 'pending' ? ' · transfert en attente' : ''}
                     </Text>
                   </View>
                   <Ionicons name="chevron-forward" size={16} color={colors.muted} />
@@ -115,7 +159,8 @@ export function CaravanBoard() {
         )}
 
         {list.map(({ c, via }) => {
-          const mine = ticketFor(c.id);
+          const mine = c.myTicketId;
+          const closed = !c.seats || !c.bookingOpen;
           return (
             <View key={c.id} style={[styles.card, shadow.card]}>
               <CaravanSummary caravan={c} via={via ?? undefined} />
@@ -129,16 +174,16 @@ export function CaravanBoard() {
                   </Text>
                 </View>
                 {mine ? (
-                  <Pressable style={[styles.book, styles.bookMine]} onPress={() => router.push(`/billet/${mine.id}`)}>
+                  <Pressable style={[styles.book, styles.bookMine]} onPress={() => router.push(`/billet/${mine}`)}>
                     <Ionicons name="ticket-outline" size={14} color={colors.primary} />
                     <Text style={[styles.bookText, { color: colors.primary }]}>Mon billet</Text>
                   </Pressable>
                 ) : (
                   <Pressable
-                    style={[styles.book, !c.seats && styles.bookOff]}
-                    disabled={!c.seats}
+                    style={[styles.book, (closed || c.purchasedHere) && !c.myBooking && styles.bookOff]}
+                    disabled={(closed || c.purchasedHere) && !c.myBooking}
                     onPress={() => router.push(`/caravane/${c.id}`)}>
-                    <Text style={styles.bookText}>Réserver</Text>
+                    <Text style={styles.bookText}>{c.myBooking ? 'Payer' : c.purchasedHere ? 'Billet offert' : c.seats ? (c.bookingOpen ? 'Réserver' : 'Fermé') : 'Complet'}</Text>
                   </Pressable>
                 )}
               </View>

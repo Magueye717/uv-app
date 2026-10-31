@@ -6,15 +6,20 @@ import Animated, { LayoutAnimationConfig } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Field, LabeledField, PrimaryButton } from '@/components/ui';
-import { EmptyState } from '@/components/states';
 import { PopOnChange, popIn } from '@/components/motion';
-import { formatFcfa, TAXI_CHAT_HOURS, TAXI_LOCK_MIN, TAXI_STRIKES_LIMIT, taxiSeatPrice, type TaxiTrip } from '@/constants/data';
+import { EmptyState, ErrorState, SkeletonCard } from '@/components/states';
+import { formatFcfa, TAXI_LOCK_MIN, TAXI_STRIKES_LIMIT, taxiSeatPrice } from '@/constants/data';
 import { colors, radii, shadow, typo } from '@/constants/theme';
-import { useTaxi } from '@/context/TaxiContext';
+import { useTaxi, type TaxiTrip } from '@/context/TaxiContext';
+import type { NewTrip } from '@/features/taxi/api';
 import { useTaxiActions } from '@/features/taxi/useTaxiActions';
+import { ApiError } from '@/lib/api';
 
 const LEAVE_IN = [15, 30, 60, 120]; // minutes
 const SEAT_OPTIONS = [2, 3, 4];
+/** Same bounds as the backend (decision 2026-10-31). */
+const FARE_MIN = 500;
+const FARE_MAX = 20_000;
 
 export function useNow() {
   const [now, setNow] = useState(() => Date.now());
@@ -35,8 +40,6 @@ export function formatDeparture(at: number, now: number) {
 
 const leaveLabel = (m: number) => (m < 60 ? `${m} min` : `${m / 60} h`);
 
-const LOCK_MS = TAXI_LOCK_MIN * 60_000;
-
 // Sunu Taxi: a student proposes a trip, others pay their seat to join.
 // Seats are locked 30 min before departure so nobody is left paying for someone else.
 /** Screen content without header or safe area: used by a tab and by its standalone page. */
@@ -45,18 +48,21 @@ export function SunuTaxiBoard() {
   const { me, trips, strikes } = taxi;
   const now = useNow();
   const [creating, setCreating] = useState(false);
-  const suspended = strikes >= TAXI_STRIKES_LIMIT;
 
-  // Open trips, plus my departed ones while their chat is still open.
-  const upcoming = trips
-    .filter((t) =>
-      t.departed
-        ? t.passengers.includes(me) && now < t.departureAt + TAXI_CHAT_HOURS * 3_600_000
-        : t.departureAt > now - 15 * 60_000,
-    )
-    .sort((a, b) => a.departureAt - b.departureAt);
+  // From the server: open trips, plus my departed ones while their chat is still open.
+  const upcoming = trips.filter((t) => t.status !== 'cancelled');
 
-  const { join, leave, cancel, busy, depart, current } = useTaxiActions();
+  const { join, resumePayment, leave, cancel, busy, depart, claim, current, suspended } = useTaxiActions();
+
+  if (taxi.loading) {
+    return (
+      <View style={styles.body}>
+        <SkeletonCard />
+        <SkeletonCard />
+      </View>
+    );
+  }
+  if (taxi.error && trips.length === 0) return <ErrorState text={taxi.error} onRetry={taxi.refresh} />;
 
   return (
     <>
@@ -78,7 +84,7 @@ export function SunuTaxiBoard() {
 
         <View style={[styles.rules, shadow.card]}>
           <Rule icon="wallet-outline" text="Tu paies ta place en rejoignant : prix fixe, connu d’avance." />
-          <Rule icon="lock-closed-outline" text={`Places verrouillées ${TAXI_LOCK_MIN} min avant : quitter n’est plus remboursé.`} />
+          <Rule icon="lock-closed-outline" text={`Places verrouillées ${TAXI_LOCK_MIN} min avant (à mi-chemin pour un départ proche) : quitter n’est plus remboursé.`} />
           <Rule icon="shield-checkmark-outline" text="Trajet annulé par l’organisateur : remboursé à 100 %." />
         </View>
 
@@ -113,10 +119,12 @@ export function SunuTaxiBoard() {
             busy={!!current && current.id !== t.id}
             onBusy={busy}
             onJoin={() => join(t)}
+            onPay={() => resumePayment(t)}
             onLeave={(locked) => leave(t, locked)}
             onCancel={(locked) => cancel(t, locked)}
-            onCheckIn={() => taxi.checkIn(t.id)}
+            onCheckIn={() => taxi.checkIn(t.id).catch(() => undefined)}
             onDepart={() => depart(t)}
+            onClaim={() => claim(t)}
             messageCount={taxi.unreadFor(t.id)}
             onChat={() => router.push(`/trajet/${t.id}`)}
             compact
@@ -128,8 +136,8 @@ export function SunuTaxiBoard() {
       <NewTripSheet
         visible={creating}
         onClose={() => setCreating(false)}
-        onCreate={(trip) => {
-          taxi.create(trip);
+        onCreate={async (trip) => {
+          await taxi.create(trip);
           setCreating(false);
         }}
       />
@@ -148,10 +156,12 @@ export function TripCard({
   busy,
   onBusy,
   onJoin,
+  onPay,
   onLeave,
   onCancel,
   onCheckIn,
   onDepart,
+  onClaim,
   messageCount,
   onChat,
 }: {
@@ -163,10 +173,14 @@ export function TripCard({
   busy: boolean;
   onBusy: () => void;
   onJoin: () => void;
+  /** Back to the payment page for a seat taken but not paid yet. */
+  onPay: () => void;
   onLeave: (locked: boolean) => void;
   onCancel: (locked: boolean) => void;
   onCheckIn: () => void;
   onDepart: () => void;
+  /** Organizer, after departure: collect the paid seats. */
+  onClaim: () => void;
   messageCount: number;
   onChat: () => void;
   compact?: boolean;
@@ -174,12 +188,15 @@ export function TripCard({
 }) {
   const isOrganizer = t.passengers[0] === me;
   const isIn = t.passengers.includes(me);
-  const full = t.passengers.length >= t.seats;
-  const left = t.departureAt - now;
-  const locked = left <= LOCK_MS;
+  const paying = t.myStatus === 'pending_payment';
+  const full = t.seatsTaken >= t.seats;
+  const locked = now >= t.lockAt;
   const here = t.checkedIn.includes(me);
-  const lockIn = Math.max(0, Math.ceil((left - LOCK_MS) / 60_000));
+  const lockIn = Math.max(0, Math.ceil((t.lockAt - now) / 60_000));
+  // Seats paid by someone who left after the lock, or held while someone pays: taken, but nobody to show.
+  const reserved = Math.max(0, t.seatsTaken - t.passengers.length);
   const { trips, lateCancels } = t.organizer;
+  const claimed = !!t.claim?.payout;
 
   return (
     <Pressable
@@ -231,22 +248,24 @@ export function TripCard({
             t.passengers[i] ? (
               <Animated.View key={t.passengers[i]} entering={popIn}>
                 <Avatar
-                  initials={t.passengers[i]}
+                  initials={t.people[t.passengers[i]]?.initials ?? '?'}
                   small
                   highlight={t.passengers[i] === me}
                   here={t.checkedIn.includes(t.passengers[i])}
                 />
               </Animated.View>
+            ) : i < t.passengers.length + reserved ? (
+              <View key={`taken-${i}`} style={styles.takenSeat} />
             ) : (
               <View key={`free-${i}`} style={styles.freeSeat} />
             ),
           )}
           <Text style={styles.seatsText}>
-            {t.passengers.length}/{t.seats}
+            {t.seatsTaken}/{t.seats}
           </Text>
         </View>
         </LayoutAnimationConfig>
-        <Text style={styles.share}>{formatFcfa(taxiSeatPrice(t))} / place</Text>
+        <Text style={styles.share}>{formatFcfa(t.seatPrice)} / place</Text>
       </View>
 
       {!compact && t.taxi && (
@@ -309,9 +328,33 @@ export function TripCard({
             </Pressable>
           )}
           {/* One tap to the chat: it's what you need most once you're in. Gone when the chat closes. */}
-          {now < t.departureAt + TAXI_CHAT_HOURS * 3_600_000 && <ChatButton count={messageCount} onPress={onChat} />}
+          {now < t.chatClosesAt && <ChatButton count={messageCount} onPress={onChat} />}
         </View>
-      ) : t.departed ? null : isOrganizer ? (
+      ) : t.departed ? (
+        isOrganizer && (t.claim?.amount ?? 0) > 0 ? (
+          <Pressable
+            style={[styles.action, claimed && styles.actionDone]}
+            disabled={claimed}
+            onPress={onClaim}
+            accessibilityRole="button"
+            accessibilityState={{ disabled: claimed }}>
+            <Ionicons name={claimed ? 'checkmark-circle' : 'wallet-outline'} size={16} color={claimed ? colors.successText : '#fff'} />
+            <Text style={[styles.actionText, claimed && { color: colors.successText }]}>
+              {claimed ? `${formatFcfa(t.claim!.payout!.amount)} demandés` : `Récupérer ${formatFcfa(t.claim!.amount)}`}
+            </Text>
+          </Pressable>
+        ) : null
+      ) : paying ? (
+        <View style={styles.actions}>
+          <Pressable style={[styles.action, { flex: 1 }]} onPress={onPay} accessibilityRole="button">
+            <Ionicons name="wallet-outline" size={16} color="#fff" />
+            <Text style={styles.actionText}>Payer ma place · {formatFcfa(t.seatPrice)}</Text>
+          </Pressable>
+          <Pressable style={[styles.action, styles.actionOutline, styles.actionSmall]} onPress={() => onLeave(false)}>
+            <Text style={[styles.actionText, { color: colors.muted2 }]}>Libérer</Text>
+          </Pressable>
+        </View>
+      ) : isOrganizer ? (
         locked ? (
           <View style={styles.actions}>
             <Pressable style={[styles.action, { flex: 1 }]} onPress={onDepart}>
@@ -356,7 +399,7 @@ export function TripCard({
           disabled={full || suspended}
           onPress={busy ? onBusy : onJoin}>
           <Text style={styles.actionText}>
-            {full ? 'Complet' : suspended ? 'Suspendu' : busy ? 'Déjà dans un trajet' : `Rejoindre · ${formatFcfa(taxiSeatPrice(t))}`}
+            {full ? 'Complet' : suspended ? 'Suspendu' : busy ? 'Déjà dans un trajet' : `Rejoindre · ${formatFcfa(t.seatPrice)}`}
           </Text>
         </Pressable>
       )}
@@ -412,21 +455,33 @@ function NewTripSheet({
 }: {
   visible: boolean;
   onClose: () => void;
-  onCreate: (trip: Pick<TaxiTrip, 'from' | 'to' | 'departureAt' | 'seats' | 'fare'>) => void;
+  onCreate: (trip: NewTrip) => Promise<void>;
 }) {
   const [from, setFrom] = useState('UGB · Village E');
   const [to, setTo] = useState('');
   const [leaveIn, setLeaveIn] = useState(30);
   const [seats, setSeats] = useState(4);
   const [fare, setFare] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const fareValue = Number(fare.replace(/\D/g, ''));
-  const valid = from.trim().length > 1 && to.trim().length > 1 && fareValue > 0;
+  const fareError = fareValue > 0 && (fareValue < FARE_MIN || fareValue > FARE_MAX) ? `Entre ${formatFcfa(FARE_MIN)} et ${formatFcfa(FARE_MAX)}.` : null;
+  const valid = from.trim().length > 1 && to.trim().length > 1 && fareValue > 0 && !fareError;
 
-  const submit = () => {
-    onCreate({ from: from.trim(), to: to.trim(), departureAt: Date.now() + leaveIn * 60_000, seats, fare: fareValue });
-    setTo('');
-    setFare('');
+  const submit = async () => {
+    setSubmitting(true);
+    setError(null);
+    try {
+      // The departure is counted on the server's clock: a phone set to the wrong time still gets the right trip.
+      await onCreate({ from: from.trim(), to: to.trim(), leaveInMinutes: leaveIn, seats, fare: fareValue });
+      setTo('');
+      setFare('');
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Une erreur est survenue. Réessaie.');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -449,7 +504,7 @@ function NewTripSheet({
             <LabeledField label="Places dans le taxi (toi compris)">
               <Chips options={SEAT_OPTIONS} value={seats} onChange={setSeats} label={String} />
             </LabeledField>
-            <LabeledField label="Prix total du taxi">
+            <LabeledField label="Prix total du taxi" error={fareError}>
               <Field
                 icon="cash-outline"
                 placeholder="3000"
@@ -459,12 +514,13 @@ function NewTripSheet({
                 right={<Text style={styles.fcfa}>FCFA</Text>}
               />
             </LabeledField>
-            {fareValue > 0 && (
+            {fareValue > 0 && !fareError && (
               <Text style={styles.hint}>
                 Chaque passager paie {formatFcfa(taxiSeatPrice({ fare: fareValue, seats }))} en rejoignant. Tu couvres les places vides.
               </Text>
             )}
-            <PrimaryButton label="Publier le trajet" onPress={submit} disabled={!valid} />
+            {error && <Text style={styles.error}>{error}</Text>}
+            <PrimaryButton label="Publier le trajet" onPress={submit} disabled={!valid} loading={submitting} />
           </ScrollView>
         </SafeAreaView>
       </KeyboardAvoidingView>
@@ -535,6 +591,7 @@ const styles = StyleSheet.create({
   seatsRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   seatsText: { ...typo.caption, color: colors.muted2, marginLeft: 4 },
   freeSeat: { width: 22, height: 22, borderRadius: 11, borderWidth: 1.5, borderColor: colors.border, borderStyle: 'dashed' },
+  takenSeat: { width: 22, height: 22, borderRadius: 11, backgroundColor: colors.border },
   share: { ...typo.smallStrong, color: colors.navy },
   action: {
     flexDirection: 'row',
@@ -621,4 +678,5 @@ const styles = StyleSheet.create({
   chipTextOn: { color: '#fff' },
   fcfa: { color: colors.muted2, fontWeight: '600' },
   hint: { ...typo.caption, color: colors.muted2, marginTop: -6 },
+  error: { fontSize: 13, fontWeight: '600', color: colors.danger, textAlign: 'center' },
 });

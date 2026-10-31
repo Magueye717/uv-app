@@ -1,11 +1,23 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useCallback, useEffect, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { OtpInput } from '@/components/OtpInput';
 import { PrimaryButton } from '@/components/ui';
 import { colors, radii, typo } from '@/constants/theme';
-import { DEV_OTP, maskEmail, OTP_LENGTH, OTP_RESEND_DELAY_S, sendOtp, verifyOtp, type OtpChannel } from './auth';
+import { ApiError } from '@/lib/api';
+import {
+  DEV_OTP,
+  maskEmail,
+  OTP_LENGTH,
+  OTP_RESEND_DELAY_S,
+  resendOtp,
+  sendOtp,
+  verifyOtp,
+  type OtpChallenge,
+  type OtpChannel,
+  type OtpPurpose,
+} from './auth';
 import { formatPhone, PHONE_PREFIX } from './validation';
 
 const EMPTY = Array<string>(OTP_LENGTH).fill('');
@@ -15,14 +27,23 @@ const channelLabel = (channel: OtpChannel, email: string | null) =>
 
 type Props = {
   phone: string;
+  /** Why the code was sent: a resend after expiry starts a new verification of the same kind. */
+  purpose: OtpPurpose;
+  /** Current verification, from POST /auth/otp. */
+  challengeId: string;
+  /** A new verification replaced the expired one. */
+  onChallenge: (challenge: OtpChallenge) => void;
   linkedEmail: string | null;
   verified: boolean;
   onEditPhone: () => void;
-  onVerified: () => void;
+  /** Proof that the phone is verified, valid 15 minutes and usable once. */
+  onVerified: (verificationToken: string) => void;
   onContinue: () => void;
 };
 
-export function StepOtp({ phone, linkedEmail, verified, onEditPhone, onVerified, onContinue }: Props) {
+const messageOf = (err: unknown) => (err instanceof ApiError ? err.message : 'Une erreur est survenue. Réessaie.');
+
+export function StepOtp({ phone, purpose, challengeId, onChallenge, linkedEmail, verified, onEditPhone, onVerified, onContinue }: Props) {
   const [digits, setDigits] = useState(EMPTY);
   const [verifying, setVerifying] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -49,10 +70,18 @@ export function StepOtp({ phone, linkedEmail, verified, onEditPhone, onVerified,
       setVerifying(true);
       setError(null);
       setNotice(null);
-      const res = await verifyOtp(value);
-      setVerifying(false);
+      let res;
+      try {
+        res = await verifyOtp(challengeId, value);
+      } catch (err) {
+        // Offline or rate-limited: the code may be right, keep it so the student can retry.
+        setError(messageOf(err));
+        return;
+      } finally {
+        setVerifying(false);
+      }
       if (res.ok) {
-        onVerified();
+        onVerified(res.verificationToken);
         return;
       }
       setDigits(EMPTY);
@@ -70,7 +99,7 @@ export function StepOtp({ phone, linkedEmail, verified, onEditPhone, onVerified,
         );
       }
     },
-    [onVerified],
+    [challengeId, onVerified],
   );
 
   // Auto-submit as soon as the last digit is entered (typed, pasted or autofilled).
@@ -81,7 +110,21 @@ export function StepOtp({ phone, linkedEmail, verified, onEditPhone, onVerified,
 
   const resend = async (channel: OtpChannel) => {
     setSending(channel);
-    await sendOtp(phone, channel);
+    setNotice(null);
+    try {
+      try {
+        await resendOtp(challengeId, channel);
+      } catch (err) {
+        // Expired or locked verification: start a new one for the same phone.
+        if (!(err instanceof ApiError && err.code === 'OTP_EXPIRED')) throw err;
+        onChallenge(await sendOtp(phone, purpose, channel));
+      }
+    } catch (err) {
+      setSending(null);
+      setError(messageOf(err));
+      setAttemptsLeft(null);
+      return;
+    }
     setSending(null);
     setDigits(EMPTY);
     setError(null);
@@ -137,7 +180,8 @@ export function StepOtp({ phone, linkedEmail, verified, onEditPhone, onVerified,
         {seconds > 0 ? (
           <Text style={styles.muted}>Renvoyer le code dans 0:{String(seconds).padStart(2, '0')}</Text>
         ) : (
-          <Pressable onPress={() => resend('sms')} disabled={!!sending} hitSlop={8}>
+          <Pressable onPress={() => resend('sms')} disabled={!!sending} hitSlop={8} style={styles.resend}>
+            {sending === 'sms' && <ActivityIndicator size="small" color={colors.orangeText} />}
             <Text style={styles.link}>{sending === 'sms' ? 'Envoi…' : 'Renvoyer le code'}</Text>
           </Pressable>
         )}
@@ -158,7 +202,7 @@ export function StepOtp({ phone, linkedEmail, verified, onEditPhone, onVerified,
                 <Ionicons name="logo-whatsapp" size={18} color={colors.success} />
               </View>
               <Text style={styles.altText}>{sending === 'whatsapp' ? 'Envoi…' : 'Recevoir par WhatsApp'}</Text>
-              <Ionicons name="chevron-forward" size={18} color={colors.muted} />
+              {sending === 'whatsapp' ? <ActivityIndicator size="small" color={colors.muted} /> : <Ionicons name="chevron-forward" size={18} color={colors.muted} />}
             </Pressable>
             {linkedEmail && (
               <Pressable style={styles.alt} onPress={() => resend('email')} disabled={!!sending}>
@@ -169,7 +213,7 @@ export function StepOtp({ phone, linkedEmail, verified, onEditPhone, onVerified,
                   <Text style={styles.altText}>{sending === 'email' ? 'Envoi…' : 'Recevoir par e-mail'}</Text>
                   <Text style={styles.altSub}>{maskEmail(linkedEmail)}</Text>
                 </View>
-                <Ionicons name="chevron-forward" size={18} color={colors.muted} />
+                {sending === 'email' ? <ActivityIndicator size="small" color={colors.muted} /> : <Ionicons name="chevron-forward" size={18} color={colors.muted} />}
               </Pressable>
             )}
           </View>
@@ -183,6 +227,7 @@ const styles = StyleSheet.create({
   intro: { ...typo.body, lineHeight: 22, color: colors.muted2 },
   strong: { fontWeight: '700', color: colors.text },
   link: { ...typo.bodyStrong, color: colors.orangeText },
+  resend: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   muted: { ...typo.body, color: colors.muted2, textAlign: 'center' },
   error: { fontSize: 13, fontWeight: '600', color: colors.danger, textAlign: 'center' },
   notice: { ...typo.small, color: colors.success, textAlign: 'center' },

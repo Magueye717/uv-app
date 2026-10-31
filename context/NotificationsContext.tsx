@@ -1,19 +1,60 @@
-import { createContext, useContext, useMemo, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { AppState } from 'react-native';
 
-import { notifications } from '@/constants/data';
+import { useAuth } from '@/context/AuthContext';
+import { realtime } from '@/features/chat/realtime';
+import { api } from '@/lib/api';
 
 type NotificationsValue = {
-  /** Ids not seen yet. */
-  unread: string[];
-  markAllRead: () => void;
+  /** Not read yet (the bell's dot, the profile badge). */
+  unreadCount: number;
+  /** The notifications screen opened: everything is read. */
+  markAllRead: () => Promise<void>;
+  refresh: () => Promise<void>;
 };
 
 const NotificationsContext = createContext<NotificationsValue | null>(null);
 
-// Mock: today's notifications start unread. A backend would keep this per student.
+/** The bell, from the backend. A new notification updates it live (my real-time channel). */
 export function NotificationsProvider({ children }: { children: ReactNode }) {
-  const [unread, setUnread] = useState(() => notifications.filter((n) => n.day === 'today').map((n) => n.id));
-  const value = useMemo<NotificationsValue>(() => ({ unread, markAllRead: () => setUnread([]) }), [unread]);
+  const { status } = useAuth();
+  const signedIn = status === 'signedIn';
+  const [unreadCount, setUnreadCount] = useState(0);
+
+  const refresh = useCallback(async () => {
+    if (!signedIn) return;
+    try {
+      setUnreadCount((await api<{ count: number }>('GET', '/notifications/unread-count', { auth: true })).count);
+    } catch {
+      // Offline: the bell keeps its last state.
+    }
+  }, [signedIn]);
+
+  useEffect(() => {
+    if (!signedIn) {
+      setUnreadCount(0);
+      return;
+    }
+    refresh();
+    const off = realtime.onMine((event) => event === 'notification.created' && refresh());
+    const sub = AppState.addEventListener('change', (s) => s === 'active' && refresh());
+    return () => {
+      off();
+      sub.remove();
+    };
+  }, [signedIn, refresh]);
+
+  const value = useMemo<NotificationsValue>(
+    () => ({
+      unreadCount,
+      refresh,
+      markAllRead: async () => {
+        setUnreadCount(0);
+        await api('POST', '/notifications/read', { auth: true, body: { all: true } }).catch(() => undefined);
+      },
+    }),
+    [unreadCount, refresh],
+  );
   return <NotificationsContext.Provider value={value}>{children}</NotificationsContext.Provider>;
 }
 

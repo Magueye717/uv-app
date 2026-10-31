@@ -2,6 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import {
+  ActivityIndicator,
   Alert,
   KeyboardAvoidingView,
   Modal,
@@ -17,9 +18,11 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { BackButton, Field, PrimaryButton } from '@/components/ui';
-import { TAXI_CHAT_HOURS, TAXI_LOCK_MIN, taxiQuickReplies, type TaxiMessage } from '@/constants/data';
+import { TAXI_CHAT_HOURS, taxiQuickReplies } from '@/constants/data';
 import { colors, radii, typo } from '@/constants/theme';
 import { useTaxi } from '@/context/TaxiContext';
+import { useConversation, type ChatMessage } from '@/features/chat/useConversation';
+import { ApiError } from '@/lib/api';
 import { useNow } from '@/lib/useNow';
 
 // Same text as the quick reply in constants/data.ts.
@@ -30,26 +33,29 @@ const time = (at: number) => {
   return `${d.getHours()}h${String(d.getMinutes()).padStart(2, '0')}`;
 };
 
-// Sunu Taxi trip chat: only the organizer and paying passengers, closed 2 h after departure.
+const fail = (title: string) => (err: unknown) => Alert.alert(title, err instanceof ApiError ? err.message : 'Réessaie dans un instant.');
+
+// Sunu Taxi trip chat: only the organizer and paying passengers, read-only 2 h after departure.
+// The conversation itself (messages, live updates, report, block) is the shared chat of features/chat.
 export default function TripChat() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const taxi = useTaxi();
-  const { me, nameOf } = taxi;
   const now = useNow();
   const scroll = useRef<ScrollViewInstance>(null);
   const [text, setText] = useState('');
   const [pinning, setPinning] = useState(false);
-  const tripMessages = taxi.messages.filter((m) => m.tripId === id).length;
-  const { markRead } = taxi;
+  const trip = taxi.trips.find((t) => t.id === id);
+  const chat = useConversation(trip?.conversationId);
+  const { markRead } = chat;
+
+  // Read while it's on screen: badges clear here and on the trip list.
   useEffect(() => {
-    if (id) markRead(id);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- re-run when a message arrives, not when the store object changes
-  }, [id, tripMessages]);
+    markRead();
+  }, [markRead]);
 
   const back = () => (router.canGoBack() ? router.back() : router.replace('/services/taxi'));
-  const trip = taxi.trips.find((t) => t.id === id);
 
-  if (!trip || !trip.passengers.includes(me)) {
+  if (!trip || !trip.conversationId || chat.revoked) {
     return (
       <SafeAreaView style={styles.safe}>
         <View style={styles.head}>
@@ -64,44 +70,46 @@ export default function TripChat() {
     );
   }
 
-  const isOrganizer = trip.passengers[0] === me;
-  const closed = now >= trip.departureAt + TAXI_CHAT_HOURS * 3_600_000;
-  const lockAt = trip.departureAt - TAXI_LOCK_MIN * 60_000;
+  const me = chat.me;
+  const isOrganizer = trip.passengers[0] === taxi.me;
+  const canWrite = !!chat.conversation?.canWrite;
+  const { lockAt } = trip;
 
   // The lock is a moment in time, not an event: shown as a system line once it has passed.
-  const thread: TaxiMessage[] = [
-    ...taxi.messages.filter((m) => m.tripId === trip.id),
-    ...(now >= lockAt ? [{ id: 'lock', tripId: trip.id, text: 'Places verrouillées 🔒', at: lockAt }] : []),
-  ].sort((a, b) => a.at - b.at);
+  const lockLine: ChatMessage[] = now >= lockAt ? [{ id: 'lock', kind: 'system', body: 'Places verrouillées 🔒', author: null, at: lockAt, clientMessageId: null }] : [];
+  const thread = [...chat.messages, ...lockLine].sort((a, b) => Number(!!a.pending) - Number(!!b.pending) || a.at - b.at);
 
   // Passengers check in at the meeting point; the organizer is the one waiting there.
-  const canCheckIn = !isOrganizer && !trip.departed && !trip.checkedIn.includes(me);
+  const canCheckIn = !isOrganizer && !trip.departed && trip.myStatus === 'joined' && !trip.checkedIn.includes(taxi.me);
   const needsCheckIn = canCheckIn && now >= lockAt;
 
-  const send = (value: string) => {
-    if (!value.trim() || closed) return;
-    // "I'm at the meeting point" checks in too: the chat then shows "Awa est là ✓" for everyone.
-    if (value === CHECK_IN_REPLY && canCheckIn) taxi.checkIn(trip.id);
-    else taxi.send(trip.id, value);
-    setText('');
+  const send = (value: string, kind: 'text' | 'quick_reply' = 'text') => {
+    if (!value.trim() || !canWrite) return;
+    // "I'm at the meeting point" checks in: the server posts "Awa est là ✓" for everyone.
+    if (value === CHECK_IN_REPLY && canCheckIn) taxi.checkIn(trip.id).catch(fail('Impossible de confirmer'));
+    else chat.send(value, kind);
+    if (kind === 'text') setText('');
   };
 
-  const moderate = (m: TaxiMessage) => {
-    if (!m.author || m.author === me) return;
-    const name = nameOf(m.author);
-    Alert.alert(name, m.text, [
+  const moderate = (m: ChatMessage) => {
+    if (!m.author || m.author.key === me || m.pending) return;
+    const name = m.author.name;
+    Alert.alert(name, m.body, [
       {
         text: 'Signaler le message',
         onPress: () =>
-          Alert.alert('Message signalé', 'L’équipe Sunu Taxi va lire la conversation. Merci de nous aider à garder les trajets sûrs.'),
+          chat.report(m).then(
+            () => Alert.alert('Message signalé', 'L’équipe Sunu Taxi va lire la conversation. Merci de nous aider à garder les trajets sûrs.'),
+            fail('Signalement non envoyé'),
+          ),
       },
       {
         text: `Bloquer ${name}`,
         style: 'destructive',
         onPress: () =>
-          Alert.alert(`Bloquer ${name} ?`, 'Tu ne verras plus ses messages et vous ne serez plus proposés sur les mêmes trajets.', [
+          Alert.alert(`Bloquer ${name} ?`, 'Tu ne verras plus ses messages, dans aucune discussion.', [
             { text: 'Annuler', style: 'cancel' },
-            { text: 'Bloquer', style: 'destructive', onPress: () => taxi.block(m.author!) },
+            { text: 'Bloquer', style: 'destructive', onPress: () => chat.blockAuthor(m).catch(fail('Blocage impossible')) },
           ]),
       },
       { text: 'Fermer', style: 'cancel' },
@@ -117,7 +125,7 @@ export default function TripChat() {
             {trip.from.split(' · ').pop()} → {trip.to.split(' · ').pop()}
           </Text>
           <Text style={styles.subtitle} numberOfLines={1}>
-            Départ {time(trip.departureAt)} · {trip.passengers.map(nameOf).join(', ')}
+            Départ {time(trip.departureAt)} · {trip.passengers.map(taxi.nameOf).join(', ')}
           </Text>
         </View>
       </View>
@@ -126,7 +134,7 @@ export default function TripChat() {
       {trip.taxi ? (
         <Pressable
           style={styles.pin}
-          disabled={!isOrganizer || closed}
+          disabled={!isOrganizer || !canWrite}
           onPress={() => setPinning(true)}
           accessibilityRole={isOrganizer ? 'button' : undefined}
           accessibilityLabel={`Taxi : ${trip.taxi}`}>
@@ -135,11 +143,11 @@ export default function TripChat() {
             <Text style={styles.pinLabel}>Taxi</Text>
             <Text style={styles.pinText}>{trip.taxi}</Text>
           </View>
-          {isOrganizer && !closed && <Ionicons name="create-outline" size={16} color={colors.muted2} />}
+          {isOrganizer && canWrite && <Ionicons name="create-outline" size={16} color={colors.muted2} />}
         </Pressable>
       ) : (
         isOrganizer &&
-        !closed && (
+        canWrite && (
           <Pressable style={[styles.pin, styles.pinEmpty]} onPress={() => setPinning(true)} accessibilityRole="button">
             <Ionicons name="add-circle-outline" size={18} color={colors.primary} />
             <Text style={styles.pinCta}>Indiquer le taxi (modèle, couleur, plaque)</Text>
@@ -151,7 +159,7 @@ export default function TripChat() {
         <View style={styles.checkIn} accessibilityLiveRegion="polite">
           <Ionicons name="location-outline" size={18} color={colors.warningText} />
           <Text style={styles.checkInText}>Tu es au point de rendez-vous ?</Text>
-          <Pressable style={styles.checkInBtn} onPress={() => taxi.checkIn(trip.id)} accessibilityRole="button">
+          <Pressable style={styles.checkInBtn} onPress={() => taxi.checkIn(trip.id).catch(fail('Impossible de confirmer'))} accessibilityRole="button">
             <Ionicons name="hand-left-outline" size={14} color="#fff" />
             <Text style={styles.checkInBtnText}>Je suis là</Text>
           </Pressable>
@@ -171,58 +179,68 @@ export default function TripChat() {
             </Text>
           </View>
 
+          {chat.hasMore && (
+            <Pressable onPress={() => chat.loadOlder().catch(() => undefined)} style={styles.older} accessibilityRole="button">
+              <Text style={styles.olderText}>Messages précédents</Text>
+            </Pressable>
+          )}
+          {chat.loading && <ActivityIndicator color={colors.primary} style={{ marginTop: 16 }} />}
+          {chat.error && <Text style={styles.hidden}>{chat.error}</Text>}
+
           {thread.map((m) => {
             if (!m.author) {
               return (
                 <View key={m.id} style={styles.system}>
-                  <Text style={styles.systemText}>{m.text}</Text>
+                  <Text style={styles.systemText}>{m.body}</Text>
                 </View>
               );
             }
-            const mine = m.author === me;
-            if (taxi.blocked.includes(m.author)) {
-              return (
-                <Text key={m.id} style={styles.hidden}>
-                  Message masqué
-                </Text>
-              );
-            }
+            const mine = m.author.key === me;
             return (
               <Pressable
                 key={m.id}
                 onLongPress={() => moderate(m)}
+                onPress={m.pending === 'failed' ? () => chat.retry(m) : undefined}
                 style={[styles.row, mine && styles.rowMine]}
-                accessibilityHint={mine ? undefined : 'Appui long pour signaler ou bloquer'}>
+                accessibilityHint={m.pending === 'failed' ? 'Appuie pour renvoyer' : mine ? undefined : 'Appui long pour signaler ou bloquer'}>
                 {!mine && (
                   <View style={styles.avatar}>
-                    <Text style={styles.avatarText}>{m.author}</Text>
+                    <Text style={styles.avatarText}>{m.author.initials}</Text>
                   </View>
                 )}
-                <View style={[styles.bubble, mine ? styles.bubbleMine : styles.bubbleOther]}>
+                <View style={[styles.bubble, mine ? styles.bubbleMine : styles.bubbleOther, m.pending && { opacity: 0.6 }]}>
                   {!mine && (
                     <Text style={styles.author}>
-                      {nameOf(m.author)}
-                      {m.author === trip.passengers[0] ? ' · organisateur' : ''}
+                      {m.author.name}
+                      {m.author.role === 'organizer' ? ' · organisateur' : ''}
                     </Text>
                   )}
-                  <Text style={[styles.text, mine && { color: '#fff' }]}>{m.text}</Text>
-                  <Text style={[styles.time, mine && { color: 'rgba(255,255,255,0.75)' }]}>{time(m.at)}</Text>
+                  <Text style={[styles.text, mine && { color: '#fff' }]}>{m.body}</Text>
+                  <Text style={[styles.time, mine && { color: 'rgba(255,255,255,0.75)' }]}>
+                    {m.pending === 'failed' ? 'Non envoyé · appuie pour renvoyer' : m.pending ? 'Envoi…' : time(m.at)}
+                  </Text>
                 </View>
               </Pressable>
             );
           })}
         </ScrollView>
 
-        {closed ? (
+        {!canWrite ? (
           <View style={styles.closed}>
             <Ionicons name="lock-closed-outline" size={14} color={colors.muted2} />
-            <Text style={styles.closedText}>Discussion fermée {TAXI_CHAT_HOURS} h après le départ</Text>
+            <Text style={styles.closedText}>
+              {chat.conversation?.status === 'closed'
+                ? 'Trajet annulé · discussion fermée'
+                : now >= trip.chatClosesAt
+                  ? `Discussion fermée ${TAXI_CHAT_HOURS} h après le départ`
+                  : 'Tu peux lire la discussion, plus y écrire'}
+            </Text>
           </View>
         ) : (
           <View style={styles.composer}>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.quick} keyboardShouldPersistTaps="handled">
               {taxiQuickReplies.map((q) => (
-                <Pressable key={q} style={styles.quickChip} onPress={() => send(q)} accessibilityRole="button">
+                <Pressable key={q} style={styles.quickChip} onPress={() => send(q, 'quick_reply')} accessibilityRole="button">
                   <Text style={styles.quickText}>{q}</Text>
                 </Pressable>
               ))}
@@ -235,7 +253,7 @@ export default function TripChat() {
                 value={text}
                 onChangeText={setText}
                 multiline
-                maxLength={300}
+                maxLength={500}
                 accessibilityLabel="Écrire un message"
               />
               <Pressable
@@ -256,8 +274,10 @@ export default function TripChat() {
         initial={trip.taxi ?? ''}
         onClose={() => setPinning(false)}
         onSave={(value) => {
-          taxi.pinTaxi(trip.id, value);
-          setPinning(false);
+          taxi.pinTaxi(trip.id, value).then(
+            () => setPinning(false),
+            (err) => Alert.alert('Taxi non enregistré', err instanceof ApiError ? err.message : 'Réessaie.'),
+          );
         }}
       />
     </SafeAreaView>
@@ -339,6 +359,8 @@ const styles = StyleSheet.create({
   pinText: { ...typo.bodyStrong, color: colors.navy },
   pinCta: { ...typo.smallStrong, flex: 1, color: colors.primary },
   thread: { padding: 16, gap: 8 },
+  older: { alignSelf: 'center', paddingHorizontal: 12, paddingVertical: 6 },
+  olderText: { ...typo.smallStrong, color: colors.primary },
   safety: { flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'center', paddingHorizontal: 12, paddingVertical: 6, borderRadius: radii.pill, backgroundColor: colors.card, marginBottom: 6 },
   safetyText: { fontSize: 11, color: colors.muted2, flexShrink: 1 },
   system: { alignSelf: 'center', paddingHorizontal: 10, paddingVertical: 4, borderRadius: radii.pill, backgroundColor: '#E2E7F2' },

@@ -1,70 +1,79 @@
 import { Ionicons } from '@expo/vector-icons';
 import { router, useLocalSearchParams } from 'expo-router';
-import { useMemo, useState } from 'react';
-import { Alert, Linking, Modal, Pressable, ScrollView, Share, StyleSheet, Text, View } from 'react-native';
+import { useState } from 'react';
+import { ActivityIndicator, Alert, Linking, Modal, Pressable, RefreshControl, ScrollView, Share, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { EmptyState } from '@/components/states';
 import { BackButton, Segmented } from '@/components/ui';
-import { caravans, type Caravan, type CaravanStop, type Passenger } from '@/constants/data';
+import type { CaravanStop } from '@/constants/data';
+import { formatFcfa } from '@/constants/data';
 import { colors, radii, shadow, typo } from '@/constants/theme';
 import { useAuth } from '@/context/AuthContext';
-import { useBoarding, useManifests } from '@/features/organizer/boarding';
+import { methodLabel, type PaymentMethod } from '@/features/payments/checkout';
+import { useManifest, type OrgCaravan, type Passenger } from '@/features/organizer/boarding';
 import { TicketScanner } from '@/features/organizer/TicketScanner';
 import { useTicketCheck } from '@/features/organizer/useTicketCheck';
+import { ApiError } from '@/lib/api';
 
 type Tab = 'pickups' | 'dropoffs';
 
+const fail = (title: string) => (err: unknown) => Alert.alert(title, err instanceof ApiError ? err.message : 'Réessaie dans un instant.');
+
 /**
  * The driver's list, stop by stop: who gets on where, who is on board, who gets off where.
- * Boarding is checked by scanning the ticket's QR code (or typing its code), here or from the Scanner tab.
+ * Boarding is checked by scanning the ticket's QR code (or typing its code), here or from the Scanner tab;
+ * every phone of the organization sees the same list, live.
  */
 export default function Manifest() {
   const { id } = useLocalSearchParams<{ id: string }>();
+  // Only the organization's own departures: the server answers 404 for others (the list holds names and phones).
+  const m = useManifest(id);
   const { organizer } = useAuth();
-  // Only the organizer's own departures: the list holds names and phone numbers.
-  const c = caravans.find((x) => x.id === id && x.organizer.id === organizer?.id);
-  const list = useMemo(() => (c ? [c] : []), [c]);
-  const passengers = useManifests(list).get(c?.id ?? '') ?? [];
-  const check = useTicketCheck(list);
-  const boarding = useBoarding();
+  const isOwner = !!organizer?.roles.includes('owner');
+  const check = useTicketCheck(id);
   const [view, setView] = useState<Tab>('pickups');
   const [scanning, setScanning] = useState(false);
 
   const back = () => (router.canGoBack() ? router.back() : router.replace('/activites'));
+  const c = m.caravan;
 
   if (!c) {
     return (
       <SafeAreaView style={styles.safe}>
         <Header onBack={back} />
-        <EmptyState
-          icon="bus-outline"
-          title="Départ introuvable"
-          text="Il a été supprimé, ou il appartient à un autre organisateur."
-          action={{ label: 'Mes activités', onPress: () => router.replace('/activites') }}
-        />
+        {m.loading ? (
+          <ActivityIndicator color={colors.primary} style={{ marginTop: 40 }} />
+        ) : (
+          <EmptyState
+            icon="bus-outline"
+            title="Départ introuvable"
+            text={m.error ?? 'Il a été supprimé, ou il appartient à un autre organisateur.'}
+            action={{ label: 'Mes activités', onPress: () => router.replace('/activites') }}
+          />
+        )}
       </SafeAreaView>
     );
   }
 
-  const boarded = boarding.boarded[c.id] ?? [];
+  const passengers = m.passengers;
   // Stops the bus has left: whoever wasn't scanned there is marked absent.
-  const left = boarding.left[c.id] ?? [];
-  const isBoarded = (p: Passenger) => boarded.includes(p.ticket);
-  const isAbsent = (p: Passenger) => !isBoarded(p) && left.includes(p.pickup.place);
+  const left = c.stopsLeft;
+  const isBoarded = (p: Passenger) => p.admitted;
+  const isAbsent = (p: Passenger) => !p.admitted && left.includes(p.pickupStopId);
+  const boarded = passengers.filter(isBoarded).length;
   const absents = passengers.filter(isAbsent).length;
-  const board = (p: Passenger) => boarding.board(c.id, p.ticket);
-  const unboard = (p: Passenger) => boarding.unboard(c.id, p.ticket);
+  const stopOf = (stops: CaravanStop[], stopId: string) => stops.find((s) => s.stopId === stopId);
   // First stop not left yet: where the bus is (or is heading).
-  const current = c.pickups.find((s) => !left.includes(s.place));
+  const current = c.pickups.find((s) => !left.includes(s.stopId));
 
   const leave = (stop: CaravanStop) => {
-    const missing = passengers.filter((p) => p.pickup.place === stop.place && !isBoarded(p));
-    const go = () => boarding.leave(c.id, stop.place);
+    const missing = passengers.filter((p) => p.pickupStopId === stop.stopId && !isBoarded(p));
+    const go = () => m.leave(stop.stopId).catch(fail('Impossible d’enregistrer le départ'));
     if (!missing.length) return go();
     Alert.alert(
       `${missing.length} passager${missing.length > 1 ? 's' : ''} pas encore monté${missing.length > 1 ? 's' : ''}`,
-      `${missing.map((p) => `${p.name} (place ${p.seat})`).join('\n')}\n\nAppelle-les avant de partir. Si tu pars, ils sont marqués absents et prévenus.`,
+      `${missing.map((p) => `${p.name} (place ${p.seat})`).join('\n')}\n\nAppelle-les avant de partir. Si tu pars, ils sont marqués absents.`,
       [
         { text: 'Attendre', style: 'cancel' },
         { text: 'Partir quand même', style: 'destructive', onPress: go },
@@ -72,25 +81,65 @@ export default function Manifest() {
     );
   };
 
+  const toggle = (p: Passenger) =>
+    isBoarded(p)
+      ? Alert.alert(`Faire descendre ${p.name} ?`, 'À faire seulement si la personne a été scannée par erreur.', [
+          { text: 'Annuler', style: 'cancel' },
+          { text: 'Faire descendre', style: 'destructive', onPress: () => m.unboard(p).catch(fail('Action impossible')) },
+        ])
+      : // Manual check for a phone that won't show its QR (battery, broken screen).
+        Alert.alert(`Faire monter ${p.name} sans scanner ?`, 'Vérifie son nom sur sa carte étudiant.', [
+          { text: 'Annuler', style: 'cancel' },
+          { text: 'Faire monter', onPress: () => m.board(p).catch(fail('Action impossible')) },
+        ]);
+
   const share = () => Share.share({ message: manifestText(c, passengers) });
+
+  // "Récupérer l’argent": the paid seats (and late-cancellation fees) go to the organization's number.
+  const claim = () => {
+    if (!c.claim) return;
+    const send = (method: PaymentMethod) =>
+      m.claim(method).then(
+        (p) => p && Alert.alert('Versement demandé', `${formatFcfa(p.amount)} sur le ${methodLabel[method]} de l’organisation (${p.phoneMasked}).`),
+        fail('Versement impossible'),
+      );
+    Alert.alert(`Récupérer ${formatFcfa(c.claim.amount)}`, 'Les places payées de ce départ, sur le numéro de l’organisation. Une seule fois par départ.', [
+      { text: 'Annuler', style: 'cancel' },
+      { text: methodLabel.wave, onPress: () => send('wave') },
+      { text: methodLabel.orange_money, onPress: () => send('orange_money') },
+    ]);
+  };
+  const payoutStatus: Record<string, string> = { requested: 'demandé', processing: 'en cours', succeeded: 'versé', failed: 'nouvel essai en cours', manual_required: 'traité par l’équipe' };
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
       <Header onBack={back} onShare={share} />
 
-      <ScrollView contentContainerStyle={styles.body} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        contentContainerStyle={styles.body}
+        showsVerticalScrollIndicator={false}
+        refreshControl={<RefreshControl refreshing={false} onRefresh={m.refresh} />}>
+        {(m.offline || m.pending > 0) && (
+          <View style={styles.offline} accessibilityLiveRegion="polite">
+            <Ionicons name={m.offline ? 'cloud-offline-outline' : 'cloud-upload-outline'} size={18} color={colors.warningText} />
+            <Text style={styles.offlineText}>
+              {m.offline ? 'Hors ligne · liste gardée sur le téléphone, le scan continue de marcher.' : 'Réseau revenu · envoi des scans…'}
+              {m.pending > 0 ? ` ${m.pending} scan${m.pending > 1 ? 's' : ''} en attente d’envoi.` : ''}
+            </Text>
+          </View>
+        )}
         <View style={[styles.card, shadow.card, { gap: 12 }]}>
           <View>
             <Text style={styles.route}>
               {c.from} → {c.to}
             </Text>
             <Text style={styles.muted}>
-              {c.date} · {c.time} · {c.vehicle.label} {c.vehicle.plate}
+              {c.date} · {c.time} · {c.vehicle.label} {c.plate}
             </Text>
           </View>
           <View style={styles.stats}>
             <Stat value={passengers.length} label="réservés" />
-            <Stat value={boarded.length} label="à bord" tone={colors.successText} />
+            <Stat value={boarded} label="à bord" tone={colors.successText} />
             <Stat value={absents} label={absents > 1 ? 'absents' : 'absent'} tone={absents ? colors.dangerText : undefined} />
           </View>
           {current && (
@@ -98,11 +147,30 @@ export default function Manifest() {
               <Ionicons name="navigate-outline" size={16} color={colors.primary} />
               <Text style={styles.nextText} numberOfLines={2}>
                 Prochain arrêt : <Text style={{ fontWeight: '700' }}>{current.place}</Text> · {current.time} ·{' '}
-                {passengers.filter((p) => p.pickup.place === current.place && !isBoarded(p)).length} à faire monter
+                {passengers.filter((p) => p.pickupStopId === current.stopId && !isBoarded(p)).length} à faire monter
               </Text>
             </View>
           )}
         </View>
+
+        {c.claim && (
+          <View style={[styles.card, shadow.card, styles.claim]}>
+            <Ionicons name={c.claim.payout ? 'checkmark-circle' : 'wallet-outline'} size={22} color={c.claim.payout ? colors.success : colors.primary} />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.claimTitle}>
+                {c.claim.payout ? `${formatFcfa(c.claim.payout.amount)} · ${payoutStatus[c.claim.payout.status] ?? c.claim.payout.status}` : `${formatFcfa(c.claim.amount)} à récupérer`}
+              </Text>
+              <Text style={styles.muted}>
+                {c.claim.payout ? 'Versement sur le numéro de l’organisation.' : isOwner ? 'Le bus est parti : récupère l’argent des places pour payer le trajet.' : 'Le responsable de l’organisation récupère l’argent.'}
+              </Text>
+            </View>
+            {!c.claim.payout && isOwner && c.claim.amount > 0 && (
+              <Pressable style={styles.claimBtn} onPress={claim} accessibilityRole="button">
+                <Text style={styles.claimBtnText}>Récupérer</Text>
+              </Pressable>
+            )}
+          </View>
+        )}
 
         <Segmented
           options={[
@@ -115,11 +183,11 @@ export default function Manifest() {
 
         {view === 'pickups'
           ? c.pickups.map((stop) => {
-              const list = passengers.filter((p) => p.pickup.place === stop.place);
-              const done = left.includes(stop.place);
+              const list = passengers.filter((p) => p.pickupStopId === stop.stopId);
+              const done = left.includes(stop.stopId);
               const on = list.filter(isBoarded).length;
               return (
-                <View key={stop.place} style={[styles.card, shadow.card, styles.stop, stop === current && styles.stopCurrent]}>
+                <View key={stop.stopId} style={[styles.card, shadow.card, styles.stop, stop === current && styles.stopCurrent]}>
                   <StopHead
                     stop={stop}
                     count={list.length ? `${on}/${list.length} à bord` : 'Personne'}
@@ -128,22 +196,14 @@ export default function Manifest() {
                   {list.length === 0 && <Text style={styles.muted}>Aucun passager ne monte ici : tu peux ne pas t’arrêter.</Text>}
                   {list.map((p) => (
                     <PassengerRow
-                      key={p.ticket}
+                      key={p.ticketId}
                       p={p}
-                      detail={`Descend à ${p.dropoff.place}`}
+                      detail={`Descend à ${stopOf(c.dropoffs, p.dropoffStopId)?.place ?? '?'}${p.transferred ? ' · billet transféré' : ''}`}
                       status={isBoarded(p) ? 'boarded' : isAbsent(p) ? 'absent' : 'waiting'}
-                      // Manual check for a phone that won't show its QR (battery, broken screen).
-                      onToggle={() =>
-                        isBoarded(p)
-                          ? unboard(p)
-                          : Alert.alert(`Faire monter ${p.name} sans scanner ?`, 'Vérifie son nom sur sa carte étudiant.', [
-                              { text: 'Annuler', style: 'cancel' },
-                              { text: 'Faire monter', onPress: () => board(p) },
-                            ])
-                      }
+                      onToggle={() => toggle(p)}
                     />
                   ))}
-                  {!done && list.length > 0 && stop === current && (
+                  {!done && stop === current && (
                     <Pressable style={styles.leave} onPress={() => leave(stop)} accessibilityRole="button">
                       <Ionicons name="bus-outline" size={16} color={colors.primary} />
                       <Text style={styles.leaveText}>Le bus repart de cet arrêt</Text>
@@ -153,16 +213,16 @@ export default function Manifest() {
               );
             })
           : c.dropoffs.map((stop) => {
-              const list = passengers.filter((p) => p.dropoff.place === stop.place);
+              const list = passengers.filter((p) => p.dropoffStopId === stop.stopId);
               return (
-                <View key={stop.place} style={[styles.card, shadow.card, styles.stop]}>
+                <View key={stop.stopId} style={[styles.card, shadow.card, styles.stop]}>
                   <StopHead stop={stop} estimated count={list.length ? `${list.length} descente${list.length > 1 ? 's' : ''}` : 'Personne'} />
                   {list.length === 0 && <Text style={styles.muted}>Aucune descente : arrêt facultatif.</Text>}
                   {list.map((p) => (
                     <PassengerRow
-                      key={p.ticket}
+                      key={p.ticketId}
                       p={p}
-                      detail={`Monté(e) à ${p.pickup.place}`}
+                      detail={`Monté(e) à ${stopOf(c.pickups, p.pickupStopId)?.place ?? '?'}`}
                       status={isBoarded(p) ? 'boarded' : isAbsent(p) ? 'absent' : 'waiting'}
                     />
                   ))}
@@ -172,27 +232,34 @@ export default function Manifest() {
       </ScrollView>
 
       <ScanBar onPress={() => setScanning(true)} />
-      <ScannerModal visible={scanning} onClose={() => setScanning(false)} check={check} />
+      <ScannerModal
+        visible={scanning}
+        onClose={() => {
+          setScanning(false);
+          m.refresh();
+        }}
+        check={check}
+      />
     </SafeAreaView>
   );
 }
 
 /** Plain text for WhatsApp: the driver or a co-organizer keeps the list offline. */
-function manifestText(c: Caravan, passengers: Passenger[]) {
+function manifestText(c: OrgCaravan, passengers: Passenger[]) {
   const lines = [
     `${c.organizer.name} · ${c.from} → ${c.to}`,
-    `${c.date} · ${c.time} · ${c.vehicle.plate} · ${passengers.length} passagers`,
+    `${c.date} · ${c.time} · ${c.plate} · ${passengers.length} passagers`,
     '',
     'MONTÉES',
   ];
   for (const s of c.pickups) {
-    const list = passengers.filter((p) => p.pickup.place === s.place);
+    const list = passengers.filter((p) => p.pickupStopId === s.stopId);
     lines.push(`${s.time} · ${s.place} (${list.length})`);
-    for (const p of list) lines.push(`  ${p.seat}. ${p.name} → ${p.dropoff.place} · ${p.phone}`);
+    for (const p of list) lines.push(`  ${p.seat}. ${p.name} → ${c.dropoffs.find((d) => d.stopId === p.dropoffStopId)?.place ?? '?'} · ${p.phone}`);
   }
   lines.push('', 'DESCENTES');
   for (const s of c.dropoffs) {
-    const list = passengers.filter((p) => p.dropoff.place === s.place);
+    const list = passengers.filter((p) => p.dropoffStopId === s.stopId);
     lines.push(`~${s.time} · ${s.place} (${list.length})${list.length ? ` : places ${list.map((p) => p.seat).join(', ')}` : ''}`);
   }
   return lines.join('\n');
@@ -327,6 +394,12 @@ function ScannerModal({ visible, onClose, check }: { visible: boolean; onClose: 
 }
 
 const styles = StyleSheet.create({
+  offline: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12, borderRadius: radii.md, backgroundColor: colors.warningBg },
+  offlineText: { ...typo.small, flex: 1, color: colors.warningText },
+  claim: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  claimTitle: { ...typo.title, color: colors.navy },
+  claimBtn: { paddingHorizontal: 14, minHeight: 40, borderRadius: radii.pill, backgroundColor: colors.primary, justifyContent: 'center' },
+  claimBtnText: { ...typo.smallStrong, color: '#fff' },
   safe: { flex: 1, backgroundColor: colors.bg },
   head: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingTop: 8 },
   h1: { ...typo.h3, color: colors.navy },

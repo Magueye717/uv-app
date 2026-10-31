@@ -1,27 +1,74 @@
 import { router } from 'expo-router';
-import { createContext, useContext, useMemo, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 
-import { demoAccounts, organizers, user as demoUser, type CaravanOrganizer } from '@/constants/data';
+import type { CaravanOrganizer } from '@/constants/data';
+import { signIn } from '@/features/register/auth';
+import { CAMPUSES } from '@/features/register/validation';
+import { api, session, type Tokens } from '@/lib/api';
+import { unregisterPushToken } from '@/lib/notifications';
 
-type Profile = typeof demoUser;
+/** The signed-in person, as the screens display it. Built from GET /me. */
+export type Profile = {
+  id: string;
+  firstName: string;
+  lastName: string;
+  initials: string;
+  /** Display line: "UGB · Campus 1 · Village E · Ch. 214". */
+  campus: string;
+  /** Null when living off campus (or for organizer-only accounts). */
+  village: string | null;
+  room: string | null;
+  /** Null for organizer-only accounts. */
+  studentId: string | null;
+  /** Masked by the server: "+221 77 ••• •• 02". */
+  phone: string;
+  ufr: string | null;
+  filiere: string | null;
+  niveau: string | null;
+  email: string | null;
+};
+
+/** The organization this account manages. `orgId` (= `id`) is what /org/{orgId} calls use. */
+export type AccountOrganizer = CaravanOrganizer & { orgId: string; slug: string; roles: string[] };
 
 /** Which part of the app is shown: students book, organizers check their passengers. */
 export type Space = 'student' | 'organizer';
 
 type AuthValue = {
+  /** `restoring` while the saved session is checked at start-up. */
+  status: 'restoring' | 'signedOut' | 'signedIn';
   user: Profile | null;
-  /** The company or association this account manages, if any. Set by the web platform. */
-  organizer: CaravanOrganizer | null;
-  /** Spaces this account may open: a student who also organizes has both. */
+  /** The company or association this account manages, if any. Set by an admin on the backend. */
+  organizer: AccountOrganizer | null;
+  /** Spaces this account may open, decided by the backend: a student who also organizes has both. */
   spaces: Space[];
   space: Space | null;
-  login: (phone?: string) => void;
-  register: (partial?: Partial<Profile>) => void;
+  /** Throws ApiError (wrong password, locked, network): the screen shows its message. */
+  login: (identifier: string, password: string) => Promise<void>;
+  /** After sign-up or a password reset: tokens already obtained, load the account and enter the app. */
+  completeSignIn: (tokens: Tokens) => Promise<void>;
   /** Opens the other space, through the /espace transition screen. */
   switchSpace: () => void;
   /** Used by /espace only: flips the guards while no protected screen is focused. */
   setSpace: (space: Space) => void;
-  logout: () => void;
+  logout: () => Promise<void>;
+};
+
+type MeResponse = {
+  id: string;
+  firstName: string;
+  lastName: string;
+  initials: string;
+  phoneMasked: string;
+  student: { studentNumber: string; campus: string; onCampus: boolean; village: string | null; room: string | null; ufr: string | null; filiere: string | null; niveau: string | null } | null;
+  spaces: Space[];
+  organizations: { id: string; name: string; category: string; level: string; roles: string[] }[];
+  email: { address: string; verified: boolean } | null;
+};
+
+type OrgResponse = {
+  organization: { id: string; slug: string; name: string; category: string; level: string; rating: number | null; trips: number };
+  myRoles: string[];
 };
 
 const AuthContext = createContext<AuthValue | null>(null);
@@ -32,43 +79,116 @@ function enterApp() {
   router.replace('/');
 }
 
+function toProfile(me: MeResponse): Profile {
+  const s = me.student;
+  const campusLabel = CAMPUSES.find((c) => c.key === s?.campus)?.label;
+  return {
+    id: me.id,
+    firstName: me.firstName,
+    lastName: me.lastName,
+    initials: me.initials,
+    campus: !s ? 'UGB' : s.onCampus && s.village ? `UGB · ${campusLabel} · ${s.village} · Ch. ${s.room}` : `UGB · ${campusLabel} · Hors campus`,
+    village: s?.village ?? null,
+    room: s?.room ?? null,
+    studentId: s?.studentNumber ?? null,
+    phone: `+221 ${me.phoneMasked}`,
+    ufr: s?.ufr ?? null,
+    filiere: s?.filiere ?? null,
+    niveau: s?.niveau ?? null,
+    email: me.email?.address ?? null,
+  };
+}
+
+async function loadOrganizer(me: MeResponse): Promise<AccountOrganizer | null> {
+  const membership = me.organizations[0];
+  if (!membership) return null;
+  const { organization: o, myRoles } = await api<OrgResponse>('GET', `/org/${membership.id}`, { auth: true });
+  return {
+    id: o.id,
+    orgId: o.id,
+    slug: o.slug,
+    name: o.name,
+    kind: o.category as CaravanOrganizer['kind'],
+    level: o.level as CaravanOrganizer['level'],
+    rating: o.rating,
+    trips: o.trips,
+    roles: myRoles,
+  };
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
+  const [status, setStatus] = useState<AuthValue['status']>('restoring');
   const [user, setUser] = useState<Profile | null>(null);
-  const [organizer, setOrganizer] = useState<CaravanOrganizer | null>(null);
+  const [organizer, setOrganizer] = useState<AccountOrganizer | null>(null);
   const [spaces, setSpaces] = useState<Space[]>([]);
   const [space, setSpace] = useState<Space | null>(null);
 
+  const reset = useCallback(() => {
+    setUser(null);
+    setOrganizer(null);
+    setSpaces([]);
+    setSpace(null);
+    setStatus('signedOut');
+  }, []);
+
+  /** Loads the account behind the current tokens. The backend decides the spaces, not the app. */
+  const loadAccount = useCallback(async () => {
+    const me = await api<MeResponse>('GET', '/me', { auth: true });
+    const org = me.spaces.includes('organizer') ? await loadOrganizer(me) : null;
+    setUser(toProfile(me));
+    setOrganizer(org);
+    setSpaces(me.spaces);
+    // A student who also organizes starts on the student side; an organizer-only account on its own.
+    setSpace(me.spaces[0] ?? null);
+    setStatus('signedIn');
+  }, []);
+
+  // Start-up: a saved refresh token means a session to restore.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        if ((await session.storedRefreshToken()) && (await session.refresh()) && !cancelled) {
+          await loadAccount();
+          return;
+        }
+      } catch {
+        // Offline at start-up: the token stays saved and is tried again on the next launch.
+      }
+      if (!cancelled) setStatus('signedOut');
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [loadAccount]);
+
+  // The backend refused the refresh token (expired, revoked, signed out elsewhere): back to sign-in.
+  useEffect(() => {
+    session.onExpired(() => {
+      reset();
+      router.replace('/(auth)/login');
+    });
+    return () => session.onExpired(null);
+  }, [reset]);
+
+  const completeSignIn = useCallback(
+    async (tokens: Tokens) => {
+      await session.save(tokens);
+      await loadAccount();
+      enterApp();
+    },
+    [loadAccount],
+  );
+
   const value = useMemo<AuthValue>(
     () => ({
+      status,
       user,
       organizer,
       spaces,
       space,
-      login: (phone = '') => {
-        const account = demoAccounts[phone.replace(/\D/g, '').replace(/^221/, '')];
-        if (account) {
-          // An organizer-only account has no student space: it opens straight on its own.
-          const allowed: Space[] = account.kind === 'organizer' ? ['organizer'] : ['student', 'organizer'];
-          setUser({ ...demoUser, firstName: account.firstName, lastName: account.lastName, initials: account.initials });
-          setOrganizer(organizers[account.organizerId]);
-          setSpaces(allowed);
-          setSpace(allowed[0]);
-        } else {
-          setUser(demoUser);
-          setOrganizer(null);
-          setSpaces(['student']);
-          setSpace('student');
-        }
-        enterApp();
-      },
-      // Sign-up in the app is for students; organizers are created on the web platform.
-      register: (partial) => {
-        setUser({ ...demoUser, ...partial });
-        setOrganizer(null);
-        setSpaces(['student']);
-        setSpace('student');
-        enterApp();
-      },
+      login: async (identifier, password) => completeSignIn(await signIn(identifier, password)),
+      completeSignIn,
       switchSpace: () => {
         const next = spaces.find((s) => s !== space);
         if (!next) return;
@@ -77,15 +197,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setSpace: (next) => {
         if (spaces.includes(next)) setSpace(next);
       },
-      logout: () => {
-        setUser(null);
-        setOrganizer(null);
-        setSpaces([]);
-        setSpace(null);
+      logout: async () => {
+        await unregisterPushToken();
+        const refreshToken = await session.storedRefreshToken();
+        // Best effort: even offline, the device forgets the session.
+        if (refreshToken) await api('POST', '/auth/logout', { auth: true, body: { refreshToken } }).catch(() => undefined);
+        await session.clear();
+        reset();
         router.replace('/(auth)/login');
       },
     }),
-    [user, organizer, spaces, space]
+    [status, user, organizer, spaces, space, completeSignIn, reset],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

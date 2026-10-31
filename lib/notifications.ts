@@ -6,6 +6,7 @@ import { useEffect } from 'react';
 import { Platform } from 'react-native';
 
 import { mealTimes } from '@/constants/data';
+import { api } from '@/lib/api';
 
 // Notifications carry the screen to open in `data.url` (see useNotificationRouting).
 export type NotificationData = { url?: string };
@@ -123,12 +124,13 @@ export async function scheduleCaravanReminder(
 }
 
 /**
- * Sunu Taxi: when seats lock (30 min before), remind the student to check in at the meeting point.
+ * Sunu Taxi: when seats lock (usually 30 min before), remind the student to check in at the meeting point.
  * Tapping it opens the trip, where "Je suis là" is one tap away.
  */
-export async function scheduleTaxiReminder(trip: { id: string; from: string; departureAt: number }, lockMinutes: number) {
-  const remindAt = trip.departureAt - lockMinutes * 60 * 1000;
+export async function scheduleTaxiReminder(trip: { id: string; from: string; departureAt: number; lockAt: number }) {
+  const remindAt = trip.lockAt;
   if (remindAt <= Date.now()) return;
+  const lockMinutes = Math.round((trip.departureAt - trip.lockAt) / 60_000);
   try {
     const { granted } = await Notifications.getPermissionsAsync();
     if (!granted) return;
@@ -155,22 +157,35 @@ export function cancelTaxiReminder(tripId: string) {
   Notifications.cancelScheduledNotificationAsync(`taxi-${tripId}`).catch(() => {});
 }
 
+let registeredToken: string | null = null;
+
 /**
- * Gets this device's Expo push token so a server can send campus alerts (bourse payée, plat épuisé,
- * cours déplacé). Needs an EAS project ID (`eas init`) and a development build; Expo Go on Android
- * can't receive remote push. Returns null until both exist.
+ * Gets this device's Expo push token and gives it to the backend, which then sends ticket transfers, departure
+ * confirmations, refunds, chat messages… Needs an EAS project ID (`eas init`) and a development build; Expo Go
+ * on Android can't receive remote push. Returns null until both exist (the in-app bell works anyway).
  */
 export async function registerPushToken(): Promise<string | null> {
   const projectId = Constants.expoConfig?.extra?.eas?.projectId as string | undefined;
   if (!projectId) return null;
   try {
     const { data: token } = await Notifications.getExpoPushTokenAsync({ projectId });
-    // TODO: send `token` to the UGB Campus backend once it exists.
+    await api('PUT', '/me/push-tokens', { auth: true, body: { token, platform: Platform.OS === 'ios' ? 'ios' : Platform.OS === 'android' ? 'android' : 'web' } });
+    registeredToken = token;
     return token;
   } catch {
     // Network error or Expo Go on Android: try again on next launch.
     return null;
   }
+}
+
+/** Sign-out: this phone stops receiving the account's notifications. Best effort. */
+export async function unregisterPushToken() {
+  // The next account signed in on this phone registers again.
+  setupDone = false;
+  if (!registeredToken) return;
+  const token = registeredToken;
+  registeredToken = null;
+  await api('POST', '/me/push-tokens/unregister', { auth: true, body: { token } }).catch(() => undefined);
 }
 
 /**

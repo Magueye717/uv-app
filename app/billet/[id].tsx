@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
-import { router, useLocalSearchParams } from 'expo-router';
-import { useState } from 'react';
-import { Alert, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
+import { useCallback, useState } from 'react';
+import { ActivityIndicator, Alert, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import QRCode from 'react-native-qrcode-svg';
 import Animated from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -9,18 +9,13 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { OrganizerLine } from '@/components/caravan';
 import { popIn, riseIn } from '@/components/motion';
 import { BackButton, Field, LabeledField, PrimaryButton } from '@/components/ui';
-import {
-  cancellationRefund,
-  caravanState,
-  caravans,
-  formatDateTime,
-  formatFcfa,
-  FREE_CANCEL_MS,
-  paymentMethods,
-} from '@/constants/data';
+import { formatDateTime, formatFcfa } from '@/constants/data';
 import { colors, motion, radii, shadow, typo } from '@/constants/theme';
 import { useAuth } from '@/context/AuthContext';
-import { useTickets } from '@/context/TicketsContext';
+import { useCaravans } from '@/context/CaravansContext';
+import { caravansApi, dayLabel, hourLabel, toOrganizer, type TicketDto } from '@/features/caravans/api';
+import { methodLabel } from '@/features/payments/checkout';
+import { ApiError } from '@/lib/api';
 import { useNow } from '@/lib/useNow';
 
 /** "06h15" → "06h00": students wait at the stop 15 min before the bus. */
@@ -30,95 +25,126 @@ function minus15(time: string) {
   return `${String(Math.floor(n / 60)).padStart(2, '0')}h${String(n % 60).padStart(2, '0')}`;
 }
 
+const fail = (title: string) => (err: unknown) => Alert.alert(title, err instanceof ApiError ? err.message : 'Réessaie dans un instant.');
+
 export default function Billet() {
   // `nouveau`: just paid, the ticket is handed over with a short animation (not on later visits).
   const { id, nouveau } = useLocalSearchParams<{ id: string; nouveau?: string }>();
   const fresh = nouveau === '1';
-  const { tickets, cancel, transfer } = useTickets();
+  const { cancel, transfer, withdraw, tickets } = useCaravans();
   const { user } = useAuth();
-  const now = useNow();
   const [transferOpen, setTransferOpen] = useState(false);
+  const [ticket, setTicket] = useState<TicketDto | null>(() => tickets.find((t) => t.id === id) ?? null);
+  const [missing, setMissing] = useState(false);
+  const now = useNow();
+
+  // Fresh from the server each time it shows: the QR, the fee and the transfer state change over time.
+  const load = useCallback(() => {
+    if (!id) return;
+    caravansApi.ticket(id).then(setTicket, (err) => {
+      if (err instanceof ApiError && err.status === 404) setMissing(true);
+    });
+  }, [id]);
+  useFocusEffect(load);
 
   const back = () => (router.canGoBack() ? router.back() : router.replace({ pathname: '/(tabs)/caravanes', params: { vue: 'caravanes' } }));
-  const ticket = tickets.find((t) => t.id === id);
-  const c = ticket && caravans.find((x) => x.id === ticket.caravanId);
 
-  if (!ticket || !c) {
+  if (!ticket) {
     return (
       <SafeAreaView style={styles.safe}>
         <Header onBack={back} />
         <View style={styles.missing}>
-          <Ionicons name="ticket-outline" size={32} color={colors.muted} />
-          <Text style={styles.muted}>Billet introuvable.</Text>
+          {missing ? (
+            <>
+              <Ionicons name="ticket-outline" size={32} color={colors.muted} />
+              <Text style={styles.muted}>Billet introuvable.</Text>
+            </>
+          ) : (
+            <ActivityIndicator color={colors.primary} />
+          )}
         </View>
       </SafeAreaView>
     );
   }
 
-  const { confirmed, missing } = caravanState(c);
+  const d = ticket.details;
+  const pickupTime = hourLabel(Date.parse(d.pickup.at));
+  const dropoffTime = hourLabel(Date.parse(d.dropoff.at));
+  const missingSeats = Math.max(0, d.minPassengers - d.seatsBooked);
   const active = ticket.status === 'active';
-  const departed = now >= c.departureAt;
-  const method = paymentMethods.find((m) => m.id === ticket.paymentId)?.name ?? 'ton compte';
+  const quote = ticket.cancellationQuote;
+  const pending = ticket.transfer?.status === 'pending' ? ticket.transfer : null;
+  const canTransfer = active && !pending && !ticket.admittedAt && !!ticket.transferDeadline && Date.parse(ticket.transferDeadline) > now;
+  const method = methodLabel[ticket.paidWith] ?? 'ton compte';
 
   const askCancel = () => {
-    const refund = cancellationRefund(ticket.price, c.departureAt, now);
-    if (refund === null) return;
-    const free = c.departureAt - now >= FREE_CANCEL_MS;
+    if (!quote) return;
+    if (!quote.allowed) return Alert.alert('Annulation impossible', quote.reason);
     Alert.alert(
       'Annuler ce billet ?',
-      free
-        ? `Annulation gratuite : ${formatFcfa(refund)} remboursés sur ${method}.`
-        : `Moins de 24 h avant le départ : 10 % de frais. ${formatFcfa(refund)} remboursés sur ${method}.`,
+      quote.fee === 0
+        ? `Annulation gratuite : ${formatFcfa(quote.refund)} remboursés sur ton numéro ${method}.`
+        : `Moins de 24 h avant le départ : ${formatFcfa(quote.fee)} de frais. ${formatFcfa(quote.refund)} remboursés sur ton numéro ${method}.`,
       [
         { text: 'Garder mon billet', style: 'cancel' },
-        { text: 'Annuler le billet', style: 'destructive', onPress: () => cancel(ticket.id, refund) },
+        { text: 'Annuler le billet', style: 'destructive', onPress: () => cancel(ticket.id).then(load, fail('Annulation impossible')) },
       ],
     );
   };
+
+  const banner =
+    ticket.status === 'cancelled'
+      ? {
+          tone: 'neutral' as const,
+          icon: 'close-circle' as const,
+          text:
+            ticket.cancellation?.reason === 'holder_cancelled'
+              ? `Billet annulé · ${formatFcfa(ticket.cancellation.refundAmount)} remboursés sur ton numéro ${method}`
+              : `Départ annulé${ticket.cancellation?.reason === 'min_not_reached' ? ' (pas assez de passagers)' : ''} · ${formatFcfa(ticket.cancellation?.refundAmount ?? ticket.price)} remboursés`,
+        }
+      : ticket.status === 'transferred'
+        ? { tone: 'neutral' as const, icon: 'swap-horizontal' as const, text: `Billet transféré à ${ticket.transfer?.to.name ?? 'un ami'} (${ticket.transfer?.to.phoneMasked ?? ''})` }
+        : ticket.admittedAt
+          ? { tone: 'success' as const, icon: 'checkmark-circle' as const, text: 'Tu es à bord · bon voyage !' }
+          : d.confirmed
+            ? { tone: 'success' as const, icon: 'checkmark-circle' as const, text: `Départ confirmé · sois à ${d.pickup.place} à ${minus15(pickupTime)}` }
+            : {
+                tone: 'warning' as const,
+                icon: 'hourglass-outline' as const,
+                text: `En attente de ${missingSeats} passager${missingSeats > 1 ? 's' : ''} d’ici le ${formatDateTime(Date.parse(d.confirmBy))}. Sinon tu es remboursé à 100 %.`,
+              };
 
   return (
     <SafeAreaView style={styles.safe}>
       <Header onBack={back} />
       <ScrollView contentContainerStyle={styles.body} showsVerticalScrollIndicator={false}>
-        <StatusBanner
-          {...(ticket.status === 'cancelled'
-            ? { tone: 'neutral', icon: 'close-circle', text: `Billet annulé · ${formatFcfa(ticket.refund ?? 0)} remboursés sur ${method}` }
-            : ticket.status === 'transferred'
-              ? { tone: 'neutral', icon: 'swap-horizontal', text: `Billet transféré au ${ticket.transferredTo}` }
-              : confirmed
-                ? { tone: 'success', icon: 'checkmark-circle', text: `Départ confirmé · sois à ${ticket.pickup.place} à ${minus15(ticket.pickup.time)}` }
-                : {
-                    tone: 'warning',
-                    icon: 'hourglass-outline',
-                    text: `En attente de ${missing} passager${missing > 1 ? 's' : ''} d’ici le ${formatDateTime(c.confirmBy)}. Sinon tu es remboursé à 100 %.`,
-                  })}
-        />
+        <StatusBanner {...banner} />
 
         <Animated.View entering={fresh ? riseIn.delay(motion.fast) : undefined} style={[styles.ticket, shadow.raised, !active && { opacity: 0.6 }]}>
           <View style={styles.top}>
-            <OrganizerLine organizer={c.organizer} />
+            <OrganizerLine organizer={toOrganizer(ticket.event.organizer)} />
             <View style={styles.route}>
-              <Text style={styles.city}>{c.from}</Text>
+              <Text style={styles.city}>{d.from}</Text>
               <Ionicons name="arrow-forward" size={18} color={colors.primary} />
-              <Text style={styles.city}>{c.to}</Text>
+              <Text style={styles.city}>{d.to}</Text>
             </View>
-            {user && (
+            {user && active && (
               <Text style={styles.passenger}>
                 {user.firstName} {user.lastName}
               </Text>
             )}
             <View style={styles.grid}>
-              <Cell label="Date" value={c.date} />
-              <Cell label="Heure" value={ticket.pickup.time} />
+              <Cell label="Date" value={dayLabel(Date.parse(ticket.event.startsAt))} />
+              <Cell label="Heure" value={pickupTime} />
               <Cell label="Place" value={`n° ${ticket.seat}`} />
             </View>
             {/* Full width: stop names are long ("Diamniadio · Hôpital des enfants"). */}
             <View style={styles.stops}>
-              <StopLine icon="enter-outline" label="Montée" place={ticket.pickup.place} time={ticket.pickup.time} />
-              <StopLine icon="exit-outline" label="Descente" place={ticket.dropoff.place} time={`~${ticket.dropoff.time}`} />
+              <StopLine icon="enter-outline" label="Montée" place={d.pickup.place} time={pickupTime} />
+              <StopLine icon="exit-outline" label="Descente" place={d.dropoff.place} time={`~${dropoffTime}`} />
             </View>
             <Text style={styles.plate}>
-              {c.vehicle.label} · {c.vehicle.plate}
+              {d.vehicle.label} · {d.vehicle.plate}
             </Text>
           </View>
 
@@ -130,12 +156,13 @@ export default function Billet() {
           </View>
 
           <View style={styles.bottom}>
-            {active ? (
+            {active && ticket.qr ? (
               <>
+                {/* Signed by the server: a screenshot of a ticket given away or cancelled is refused. */}
                 <Animated.View entering={fresh ? popIn.delay(motion.slow) : undefined}>
-                <QRCode value={`UGB-CARAVANE:${ticket.id}:${c.id}:${ticket.seat}:${ticket.pickup.place}`} size={170} color={colors.navy} backgroundColor={colors.card} />
+                  <QRCode value={ticket.qr} size={190} color={colors.navy} backgroundColor={colors.card} ecl="M" />
                 </Animated.View>
-                <Text style={styles.code}>{ticket.id}</Text>
+                <Text style={styles.code}>{ticket.code}</Text>
                 <Text style={styles.muted}>Montre ce code au chauffeur à l’embarquement</Text>
               </>
             ) : (
@@ -147,22 +174,41 @@ export default function Billet() {
           </View>
         </Animated.View>
 
-        {active && !departed && (
-          <View style={{ gap: 10 }}>
-            <Pressable style={[styles.action, shadow.card]} onPress={() => setTransferOpen(true)} accessibilityRole="button">
-              <Ionicons name="swap-horizontal" size={18} color={colors.primary} />
-              <View style={{ flex: 1 }}>
-                <Text style={styles.actionTitle}>Transférer à un ami</Text>
-                <Text style={styles.actionSub}>Ton ami reçoit le billet, ta place lui revient</Text>
-              </View>
-              <Ionicons name="chevron-forward" size={16} color={colors.muted} />
+        {pending && (
+          <View style={[styles.action, shadow.card]}>
+            <Ionicons name="hourglass-outline" size={18} color={colors.warning} />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.actionTitle}>Transfert en attente</Text>
+              <Text style={styles.actionSub}>
+                {pending.to.name} ({pending.to.phoneMasked}) doit accepter avant le {formatDateTime(Date.parse(pending.expiresAt))}. Le billet reste à toi d’ici là.
+              </Text>
+            </View>
+            <Pressable onPress={() => withdraw(pending.id).then(load, fail('Action impossible'))} hitSlop={8} accessibilityRole="button">
+              <Text style={[styles.actionTitle, { color: colors.dangerText }]}>Annuler</Text>
             </Pressable>
+          </View>
+        )}
+
+        {active && quote?.allowed && (
+          <View style={{ gap: 10 }}>
+            {canTransfer && (
+              <Pressable style={[styles.action, shadow.card]} onPress={() => setTransferOpen(true)} accessibilityRole="button">
+                <Ionicons name="swap-horizontal" size={18} color={colors.primary} />
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.actionTitle}>Transférer à un ami</Text>
+                  <Text style={styles.actionSub}>Ton ami accepte dans son app, la place devient la sienne</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={16} color={colors.muted} />
+              </Pressable>
+            )}
             <Pressable style={[styles.action, shadow.card]} onPress={askCancel} accessibilityRole="button">
               <Ionicons name="close-circle-outline" size={18} color={colors.danger} />
               <View style={{ flex: 1 }}>
                 <Text style={[styles.actionTitle, { color: colors.dangerText }]}>Annuler le billet</Text>
                 <Text style={styles.actionSub}>
-                  {c.departureAt - now >= FREE_CANCEL_MS ? 'Gratuit jusqu’à 24 h avant le départ' : '10 % de frais à moins de 24 h du départ'}
+                  {quote.fee === 0 && quote.freeUntil
+                    ? `Gratuit jusqu’au ${formatDateTime(Date.parse(quote.freeUntil))}`
+                    : `${formatFcfa(quote.fee)} de frais à moins de 24 h du départ`}
                 </Text>
               </View>
               <Ionicons name="chevron-forward" size={16} color={colors.muted} />
@@ -174,10 +220,15 @@ export default function Billet() {
       <TransferSheet
         visible={transferOpen}
         onClose={() => setTransferOpen(false)}
-        onConfirm={(phone) => {
-          transfer(ticket.id, phone);
-          setTransferOpen(false);
-          Alert.alert('Billet transféré', `Le billet est envoyé au ${phone}. Il apparaîtra dans son app.`);
+        onConfirm={async (phone) => {
+          try {
+            await transfer(ticket.id, phone);
+            setTransferOpen(false);
+            load();
+            Alert.alert('Billet proposé', `Ton ami (${phone}) reçoit le billet dans son app et doit l’accepter.`);
+          } catch (err) {
+            fail('Transfert impossible')(err);
+          }
         }}
       />
     </SafeAreaView>
@@ -234,8 +285,9 @@ function Cell({ label, value }: { label: string; value: string }) {
   );
 }
 
-function TransferSheet({ visible, onClose, onConfirm }: { visible: boolean; onClose: () => void; onConfirm: (phone: string) => void }) {
+function TransferSheet({ visible, onClose, onConfirm }: { visible: boolean; onClose: () => void; onConfirm: (phone: string) => Promise<void> }) {
   const [digits, setDigits] = useState('');
+  const [sending, setSending] = useState(false);
   // Senegalese mobile numbers: 9 digits, starting with 7.
   const valid = /^7\d{8}$/.test(digits);
   const shown = digits.replace(/^(\d{2})(\d{0,3})(\d{0,2})(\d{0,2}).*/, (_, a, b, c, d) => [a, b, c, d].filter(Boolean).join(' '));
@@ -246,7 +298,9 @@ function TransferSheet({ visible, onClose, onConfirm }: { visible: boolean; onCl
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <View style={styles.sheet}>
           <Text style={styles.sheetTitle}>Transférer le billet</Text>
-          <Text style={styles.actionSub}>Ton billet devient le sien. Tu ne pourras plus l’utiliser.</Text>
+          <Text style={styles.actionSub}>
+            Ton ami doit avoir un compte étudiant UGB Campus. Une fois qu’il accepte, le billet devient le sien et ton QR code ne marche plus.
+          </Text>
           <LabeledField label="Numéro de ton ami" error={digits.length >= 9 && !valid ? 'Numéro invalide' : null}>
             <Field
               prefix="+221"
@@ -257,7 +311,15 @@ function TransferSheet({ visible, onClose, onConfirm }: { visible: boolean; onCl
               invalid={digits.length >= 9 && !valid}
             />
           </LabeledField>
-          <PrimaryButton label="Transférer" disabled={!valid} onPress={() => onConfirm(`+221 ${shown}`)} />
+          <PrimaryButton
+            label="Proposer le billet"
+            disabled={!valid}
+            loading={sending}
+            onPress={() => {
+              setSending(true);
+              onConfirm(`+221 ${shown}`).finally(() => setSending(false));
+            }}
+          />
         </View>
       </KeyboardAvoidingView>
     </Modal>

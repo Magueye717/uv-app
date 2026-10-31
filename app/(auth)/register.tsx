@@ -9,7 +9,8 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { BrandLogo } from '@/components/BrandLogo';
 import { colors, radii, typo } from '@/constants/theme';
 import { useAuth } from '@/context/AuthContext';
-import { accountExists, createAccount, getLinkedEmail, sendOtp } from '@/features/register/auth';
+import { accountConflict, createAccount, getLinkedEmail, sendOtp } from '@/features/register/auth';
+import { ApiError } from '@/lib/api';
 import {
   StepIdentification,
   type IdentificationError,
@@ -17,7 +18,6 @@ import {
 } from '@/features/register/StepIdentification';
 import { StepOtp } from '@/features/register/StepOtp';
 import { StepProfile, type ProfileValues } from '@/features/register/StepProfile';
-import { CAMPUSES } from '@/features/register/validation';
 
 type Step = 1 | 2 | 3;
 const TOTAL_STEPS = 3;
@@ -30,7 +30,7 @@ const headings: Record<Step, { title: string; subtitle?: string }> = {
 
 // Inscription in 3 steps. All values live here so they survive going back and forth.
 export default function RegisterScreen() {
-  const { register } = useAuth();
+  const { completeSignIn } = useAuth();
   const insets = useSafeAreaInsets();
   const [step, setStepState] = useState<Step>(1);
   // Slide direction of the next step: forward comes from the right, back from the left.
@@ -55,8 +55,11 @@ export default function RegisterScreen() {
     accepted: false,
   });
   const [linkedEmail, setLinkedEmail] = useState<string | null>(null);
-  // Student ID + phone pair that passed OTP verification; editing either requires a new code.
+  const [challengeId, setChallengeId] = useState<string | null>(null);
+  // Student ID + phone pair that passed OTP verification, with the server's proof (valid 15 min, single use);
+  // editing either requires a new code.
   const [verifiedFor, setVerifiedFor] = useState<string | null>(null);
+  const [verificationToken, setVerificationToken] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [identError, setIdentError] = useState<IdentificationError>(null);
   const [profileError, setProfileError] = useState<string | null>(null);
@@ -84,49 +87,59 @@ export default function RegisterScreen() {
         setStep(2);
         return;
       }
-      if (await accountExists(identity.studentId, identity.phone)) {
-        setIdentError('exists');
+      const conflict = await accountConflict(identity.studentId, identity.phone);
+      if (conflict) {
+        setIdentError({ exists: conflict });
         return;
       }
-      const [email] = await Promise.all([getLinkedEmail(identity.studentId), sendOtp(identity.phone, 'sms')]);
+      const [email, challenge] = await Promise.all([getLinkedEmail(identity.studentId), sendOtp(identity.phone, 'register')]);
       setLinkedEmail(email);
+      setChallengeId(challenge.challengeId);
       setStep(2);
-    } catch {
-      setIdentError('network');
+    } catch (err) {
+      if (err instanceof ApiError && err.code === 'PHONE_TAKEN') setIdentError({ exists: 'phone' });
+      else setIdentError({ message: err instanceof ApiError ? err.message : 'Une erreur est survenue. Réessaie.' });
     } finally {
       setSubmitting(false);
     }
   };
 
   const submitProfile = async () => {
-    if (!profile.campus || (profile.onCampus && !profile.village)) return;
+    if (!profile.campus || (profile.onCampus && !profile.village) || !verificationToken) return;
     setSubmitting(true);
     setProfileError(null);
     try {
-      const campus = CAMPUSES.find((c) => c.key === profile.campus)!.label;
-      const user = await createAccount({
+      const tokens = await createAccount({
+        verificationToken,
         studentId: identity.studentId,
-        phone: identity.phone,
         firstName: profile.firstName.trim(),
         lastName: profile.lastName.trim(),
-        campus,
+        campus: profile.campus,
+        onCampus: profile.onCampus,
         village: profile.onCampus ? profile.village : null,
         room: profile.onCampus ? profile.room : null,
         password: profile.password,
       });
-      register({
-        studentId: user.studentId,
-        phone: `+221 ${user.phone}`,
-        firstName: user.firstName,
-        lastName: user.lastName,
-        initials: `${user.firstName.charAt(0)}${user.lastName.charAt(0)}`.toUpperCase(),
-        campus: user.village ? `UGB · ${campus} · ${user.village} · Ch. ${user.room}` : `UGB · ${campus} · Hors campus`,
-        village: user.village,
-        room: user.room,
-      });
-    } catch {
-      setProfileError('Impossible de créer le compte. Réessaie.');
+      await completeSignIn(tokens);
+    } catch (err) {
       setSubmitting(false);
+      if (!(err instanceof ApiError)) {
+        setProfileError('Impossible de créer le compte. Réessaie.');
+        return;
+      }
+      setProfileError(err.message);
+      // The proof of the phone is spent or too old: verify the number again.
+      if (err.code === 'VERIFICATION_EXPIRED') {
+        setVerifiedFor(null);
+        setVerificationToken(null);
+        setIdentError({ message: 'La vérification de ton numéro a expiré. Appuie sur Continuer pour recevoir un nouveau code.' });
+        setStep(1);
+      }
+      // A number was taken meanwhile: both are on step 1.
+      if (err.code === 'STUDENT_NUMBER_TAKEN' || err.code === 'PHONE_TAKEN') {
+        setIdentError({ exists: err.code === 'PHONE_TAKEN' ? 'phone' : 'student_number' });
+        setStep(1);
+      }
     }
   };
 
@@ -186,11 +199,15 @@ export default function RegisterScreen() {
               {step === 2 && (
                 <StepOtp
                   phone={identity.phone}
+                  purpose="register"
+                  challengeId={challengeId ?? ''}
+                  onChallenge={(c) => setChallengeId(c.challengeId)}
                   linkedEmail={linkedEmail}
                   verified={verified}
                   onEditPhone={() => setStep(1)}
-                  onVerified={() => {
+                  onVerified={(token) => {
                     setVerifiedFor(identityKey);
+                    setVerificationToken(token);
                     setStep(3);
                   }}
                   onContinue={() => setStep(3)}

@@ -1,15 +1,13 @@
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
-import { useMemo } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { EmptyState } from '@/components/states';
+import { EmptyState, ErrorState } from '@/components/states';
 import { FillBar, OrganizerLine } from '@/components/caravan';
-import { caravans } from '@/constants/data';
 import { colors, radii, shadow, typo } from '@/constants/theme';
 import { useAuth } from '@/context/AuthContext';
-import { useBoarding, useManifests } from '@/features/organizer/boarding';
+import { useOrgDepartures } from '@/features/organizer/boarding';
 
 /**
  * Organizer home: their departures, soonest first, each opening its passenger list.
@@ -18,16 +16,14 @@ import { useBoarding, useManifests } from '@/features/organizer/boarding';
  */
 export default function Activites() {
   const { organizer } = useAuth();
-  const mine = useMemo(
-    () => caravans.filter((c) => c.organizer.id === organizer?.id).sort((a, b) => a.departureAt - b.departureAt),
-    [organizer],
-  );
-  const manifests = useManifests(mine);
-  const { boarded } = useBoarding();
+  const { items: mine, loading, error, refresh } = useOrgDepartures();
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
-      <ScrollView contentContainerStyle={styles.body} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        contentContainerStyle={styles.body}
+        showsVerticalScrollIndicator={false}
+        refreshControl={<RefreshControl refreshing={false} onRefresh={refresh} />}>
         <Text style={styles.h1}>Mes activités</Text>
         {organizer && (
           <View style={[styles.card, shadow.card, { gap: 6 }]}>
@@ -40,12 +36,14 @@ export default function Activites() {
         )}
 
         <Text style={styles.section}>Caravanes</Text>
-        {mine.length === 0 && (
+        {loading && <ActivityIndicator color={colors.primary} />}
+        {!loading && error && mine.length === 0 && <ErrorState text={error} onRetry={refresh} />}
+        {!loading && !error && mine.length === 0 && (
           <EmptyState icon="bus-outline" title="Aucun départ publié" text="Les départs créés sur la plateforme web apparaissent ici." />
         )}
         {mine.map((c) => {
-          const total = manifests.get(c.id)?.length ?? 0;
-          const on = boarded[c.id]?.length ?? 0;
+          const total = c.counts.booked;
+          const on = c.counts.admitted;
           return (
             <Pressable
               key={c.id}
@@ -59,7 +57,8 @@ export default function Activites() {
                     {c.from} → {c.to}
                   </Text>
                   <Text style={styles.muted}>
-                    {c.date} · {c.time} · {c.vehicle.plate}
+                    {c.date} · {c.time} · {c.plate}
+                    {c.status === 'draft' ? ' · brouillon' : c.status === 'departed' ? ' · en route' : ''}
                   </Text>
                 </View>
                 <Ionicons name="chevron-forward" size={18} color={colors.muted} />

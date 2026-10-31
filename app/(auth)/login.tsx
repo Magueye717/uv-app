@@ -9,6 +9,7 @@ import { BrandLogo } from '@/components/BrandLogo';
 import { Field, OutlineButton, PrimaryButton } from '@/components/ui';
 import { useAuth } from '@/context/AuthContext';
 import { colors, radii, typo } from '@/constants/theme';
+import { ApiError } from '@/lib/api';
 
 export default function LoginScreen() {
   const { login } = useAuth();
@@ -16,6 +17,20 @@ export default function LoginScreen() {
   const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
   const [hidden, setHidden] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const submit = async () => {
+    setSubmitting(true);
+    setError(null);
+    try {
+      // The phone as typed ("77 123 45 67", "+221…"): the backend normalizes it. A student number works too.
+      await login(phone, password);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Une erreur est survenue. Réessaie.');
+      setSubmitting(false);
+    }
+  };
 
   return (
     <View style={styles.root}>
@@ -36,14 +51,26 @@ export default function LoginScreen() {
             placeholder="Numéro de téléphone"
             keyboardType="phone-pad"
             value={phone}
-            onChangeText={setPhone}
+            onChangeText={(t) => {
+              setPhone(t);
+              setError(null);
+            }}
+            autoComplete="tel"
+            textContentType="telephoneNumber"
           />
           <Field
             icon="lock-closed-outline"
             placeholder="Mot de passe"
             secureTextEntry={hidden}
             value={password}
-            onChangeText={setPassword}
+            onChangeText={(t) => {
+              setPassword(t);
+              setError(null);
+            }}
+            autoComplete="current-password"
+            textContentType="password"
+            returnKeyType="go"
+            onSubmitEditing={() => phone && password && !submitting && submit()}
             right={
               <Pressable
                 onPress={() => setHidden((v) => !v)}
@@ -59,7 +86,13 @@ export default function LoginScreen() {
             <Text style={styles.forgot}>Mot de passe oublié ?</Text>
           </Pressable>
 
-          <PrimaryButton accent label="Se connecter" onPress={() => login(phone)} />
+          {error && (
+            <Text style={styles.error} accessibilityLiveRegion="assertive">
+              {error}
+            </Text>
+          )}
+
+          <PrimaryButton accent label="Se connecter" onPress={submit} loading={submitting} disabled={!phone.trim() || !password} />
 
           <View style={styles.divider}>
             <View style={styles.line} />
@@ -92,6 +125,7 @@ const styles = StyleSheet.create({
   subtitle: { ...typo.body, color: colors.muted2, marginTop: -6, marginBottom: 6 },
   forgotWrap: { alignSelf: 'flex-end', marginTop: -4 },
   forgot: { ...typo.bodyStrong, color: colors.orangeText },
+  error: { fontSize: 13, fontWeight: '600', color: colors.danger, textAlign: 'center' },
   divider: { flexDirection: 'row', alignItems: 'center', gap: 12, marginVertical: 4 },
   line: { flex: 1, height: 1, backgroundColor: colors.border },
   or: { ...typo.small, color: colors.muted2 },

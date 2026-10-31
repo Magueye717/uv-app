@@ -13,7 +13,8 @@ const soon = (label: string) => Alert.alert(label, 'Bient么t disponible dans l鈥
 
 export default function ProfilScreen() {
   const { user, organizer, spaces, switchSpace, logout } = useAuth();
-  const { unread } = useNotifications();
+  const academic = [user?.ufr, user?.filiere, user?.niveau].filter(Boolean).join(' 路 ');
+  const { unreadCount } = useNotifications();
 
   // Grouped lists, like system settings: fewer boxes, clearer sections.
   const groups: { title: string; rows: Row[] }[] = [
@@ -38,7 +39,7 @@ export default function ProfilScreen() {
       : []),
     {
       title: 'Pr茅f茅rences',
-      rows: [{ icon: 'notifications-outline', label: 'Notifications', href: '/notifications', badge: unread.length }],
+      rows: [{ icon: 'notifications-outline', label: 'Notifications', href: '/notifications', badge: unreadCount }],
     },
     {
       title: 'Aide',
@@ -58,9 +59,8 @@ export default function ProfilScreen() {
             <Text style={styles.name}>
               {user?.firstName} {user?.lastName}
             </Text>
-            <Text style={styles.meta}>
-              {user?.ufr} 路 {user?.filiere} 路 {user?.niveau}
-            </Text>
+            {/* UFR, fili猫re and level aren't asked at sign-up yet: the line appears once they're known. */}
+            {!!academic && <Text style={styles.meta}>{academic}</Text>}
             <Text style={styles.meta} numberOfLines={1}>
               {user?.campus}
             </Text>

@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
-import { useLayoutEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import {
   ActivityIndicator,
   ScrollView,
@@ -20,6 +20,29 @@ import { colors, motion, radii, typo } from '@/constants/theme';
 import { bellLabel, useNotifications } from '@/context/NotificationsContext';
 import { haptics } from '@/lib/haptics';
 
+/** Shortest time a spinner stays up: a fast answer would otherwise make it flash unseen, as if nothing happened. */
+const MIN_SPINNER_MS = 600;
+
+/** `loading`, held on until the spinner has been visible for at least MIN_SPINNER_MS. */
+function useVisibleLoading(loading: boolean) {
+  const startedAt = useRef<number | null>(null);
+  const [holding, setHolding] = useState(false);
+  useEffect(() => {
+    if (loading) {
+      startedAt.current = Date.now();
+      return;
+    }
+    if (startedAt.current === null) return;
+    const left = MIN_SPINNER_MS - (Date.now() - startedAt.current);
+    startedAt.current = null;
+    if (left <= 0) return;
+    setHolding(true);
+    const t = setTimeout(() => setHolding(false), left);
+    return () => clearTimeout(t);
+  }, [loading]);
+  return loading || holding;
+}
+
 export function PrimaryButton({
   label,
   onPress,
@@ -36,18 +59,21 @@ export function PrimaryButton({
   accent?: boolean;
   style?: StyleProp<ViewStyle>;
 }) {
+  const busy = useVisibleLoading(!!loading);
   return (
     <Pressable
       onPress={onPress}
-      disabled={disabled || loading}
+      disabled={disabled || busy}
+      accessibilityRole="button"
+      accessibilityState={{ disabled: disabled || busy, busy }}
       style={({ pressed }) => [
         styles.primary,
         accent && styles.accent,
         pressed && styles.pressed,
-        disabled && !loading && styles.disabled,
+        disabled && !busy && styles.disabled,
         style,
       ]}>
-      {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryLabel}>{label}</Text>}
+      {busy ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryLabel}>{label}</Text>}
     </Pressable>
   );
 }
@@ -175,12 +201,12 @@ export function BackButton({ onPress }: { onPress: () => void }) {
 }
 
 export function BellButton({ onPress }: { onPress: () => void }) {
-  const { unread } = useNotifications();
+  const { unreadCount } = useNotifications();
   return (
-    <Pressable onPress={onPress} style={styles.bell} accessibilityRole="button" accessibilityLabel={bellLabel(unread.length)}>
+    <Pressable onPress={onPress} style={styles.bell} accessibilityRole="button" accessibilityLabel={bellLabel(unreadCount)}>
       <Ionicons name="notifications-outline" size={20} color={colors.navy} />
       {/* Only when something is new: a dot that's always on gets ignored. */}
-      {unread.length > 0 && <View style={styles.dot} />}
+      {unreadCount > 0 && <View style={styles.dot} />}
     </Pressable>
   );
 }

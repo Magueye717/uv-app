@@ -1,5 +1,7 @@
-import { caravans as allCaravans, type Caravan, type Passenger } from '@/constants/data';
-import { useBoarding, useManifests } from './boarding';
+import { useAuth } from '@/context/AuthContext';
+import { caravansApi, newScanId } from '@/features/caravans/api';
+import { checkOffline } from '@/features/organizer/offline';
+import { ApiError } from '@/lib/api';
 
 export type ScanResult = {
   tone: 'success' | 'warning' | 'danger';
@@ -10,62 +12,33 @@ export type ScanResult = {
 };
 
 /**
- * Checks a scanned QR (UGB-CARAVANE:<ticket>:<caravan>:<seat>:<pickup>) or a typed ticket code
- * against the given departures, and boards the passenger when it's valid.
- * Mock: the real QR is signed by the server and checked offline with its public key.
+ * Checks a scanned QR code or a typed ticket code on the server, which boards the passenger when it's valid.
+ * The QR is signed by the server: a screenshot of a transferred or cancelled ticket is refused.
+ * `departureId`: the list the scanner was opened from (a ticket for another departure is refused).
  */
-export function useTicketCheck(caravans: Caravan[]) {
-  const manifests = useManifests(caravans);
-  const { boarded, left, board } = useBoarding();
+export function useTicketCheck(departureId?: string) {
+  const { organizer } = useAuth();
 
-  return (raw: string): ScanResult => {
-    const parts = raw.trim().split(':');
-    const isQr = parts[0] === 'UGB-CARAVANE';
-    if (parts.length > 1 && !isQr) {
-      return { tone: 'danger', title: 'Pas un billet UGB Campus', text: 'Ce QR code ne vient pas de l’app. Le passager ne monte pas.' };
-    }
-    const code = (isQr ? parts[1] : parts[0]).toUpperCase();
-
-    if (isQr && !caravans.some((c) => c.id === parts[2])) {
-      const other = allCaravans.find((c) => c.id === parts[2]);
-      return other
-        ? {
-            tone: 'danger',
-            title: 'Autre départ',
-            text: `Ce billet est pour ${other.organizer.name}, ${other.from} → ${other.to} du ${other.date}. Le passager ne monte pas.`,
-          }
-        : { tone: 'danger', title: 'Billet non valable', text: 'Départ inconnu : billet faux ou trop ancien.' };
-    }
-
-    let found: { c: Caravan; p: Passenger } | undefined;
-    for (const c of caravans) {
-      const p = manifests.get(c.id)?.find((x) => x.ticket === code);
-      if (p) found = { c, p };
-    }
-    if (!found) {
-      return { tone: 'danger', title: 'Billet non valable', text: `${code || 'Ce code'} n’est pas sur la liste : billet annulé, faux ou mal saisi.` };
-    }
-
-    const { c, p } = found;
-    if (boarded[c.id]?.includes(p.ticket)) {
+  return async (raw: string): Promise<ScanResult> => {
+    const value = raw.trim();
+    if (!organizer?.orgId) return { tone: 'danger', title: 'Pas d’organisation', text: 'Ce compte ne gère aucun départ.' };
+    // Signed QR payloads have three dot-separated parts; anything short is a typed code.
+    const isQr = value.split('.').length === 3;
+    try {
+      const r = await caravansApi.scan(organizer.orgId, {
+        ...(isQr ? { qr: value } : { code: value }),
+        ...(departureId ? { eventId: departureId } : {}),
+        clientScanId: newScanId(),
+      });
+      return { tone: r.tone, title: r.title, text: r.text, caravanId: r.eventId ?? undefined };
+    } catch (err) {
+      // No network on the road: the phone checks the QR itself with the list it keeps.
+      if (err instanceof ApiError && err.isNetwork) return checkOffline(value, organizer.orgId, departureId);
       return {
-        tone: 'warning',
-        title: 'Déjà à bord',
-        text: `${p.name} est déjà monté(e) · place ${p.seat}. Vérifie qu’il n’y a pas deux personnes avec ce billet.`,
-        caravanId: c.id,
+        tone: 'danger',
+        title: err instanceof ApiError && err.isNetwork ? 'Pas de connexion' : 'Vérification impossible',
+        text: err instanceof ApiError ? err.message : 'Réessaie dans un instant.',
       };
     }
-    board(c.id, p.ticket);
-    // Where the bus is now: the first pickup point it hasn't left.
-    const here = c.pickups.find((s) => !left[c.id]?.includes(s.place));
-    const elsewhere = here && here.place !== p.pickup.place;
-    return {
-      tone: elsewhere ? 'warning' : 'success',
-      title: `${p.name} · place ${p.seat}`,
-      text: elsewhere
-        ? `Monte à ${here.place} au lieu de ${p.pickup.place}. Descend à ${p.dropoff.place}.`
-        : `Descend à ${p.dropoff.place}. Vérifie le nom sur sa carte étudiant.`,
-      caravanId: c.id,
-    };
   };
 }

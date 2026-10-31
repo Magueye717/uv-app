@@ -2,13 +2,14 @@ import { Ionicons } from '@expo/vector-icons';
 import { router, type Href } from 'expo-router';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { caravans, findPrivateResto, TAXI_LOCK_MIN } from '@/constants/data';
+import { findPrivateResto } from '@/constants/data';
 import { colors, radii, shadow, typo } from '@/constants/theme';
 import { useCart } from '@/context/CartContext';
 import { useLost } from '@/context/LostContext';
 import { orderSteps, useOrders } from '@/context/OrdersContext';
 import { useTaxi } from '@/context/TaxiContext';
-import { useTickets } from '@/context/TicketsContext';
+import { useCaravans } from '@/context/CaravansContext';
+import { dayLabel, hourLabel } from '@/features/caravans/api';
 import { useNow } from '@/lib/useNow';
 
 type Item = {
@@ -29,7 +30,7 @@ const hhmm = (at: number) => {
 /** "En cours": tickets, taxi trip, basket and lost-and-found conversations, in one place. Hidden when empty. */
 export function InProgress() {
   const now = useNow();
-  const { tickets } = useTickets();
+  const { tickets } = useCaravans();
   const taxi = useTaxi();
   const cart = useCart();
   const lost = useLost();
@@ -43,9 +44,10 @@ export function InProgress() {
     items.push({ key: o.id, icon: 'receipt-outline', title: `Commande · ${findPrivateResto(o.restoId).resto.name}`, detail: step.title, href: `/commande/${o.id}` });
   }
   for (const t of tickets) {
-    const c = caravans.find((x) => x.id === t.caravanId);
-    if (t.status !== 'active' || !c || c.departureAt < now) continue;
-    items.push({ key: t.id, icon: 'ticket-outline', title: `Caravane ${c.from} → ${c.to}`, detail: `${c.date} · ${t.pickup.time} · ${t.pickup.place}`, href: `/billet/${t.id}` });
+    const at = Date.parse(t.event.startsAt);
+    if (t.status !== 'active' || at < now) continue;
+    const pickup = Date.parse(t.details.pickup.at);
+    items.push({ key: t.id, icon: 'ticket-outline', title: `Caravane ${t.event.title}`, detail: `${dayLabel(at)} · ${hourLabel(pickup)} · ${t.details.pickup.place}`, href: `/billet/${t.id}` });
   }
   const trip = taxi.activeTrip();
   if (trip) {
@@ -55,14 +57,15 @@ export function InProgress() {
       title: `Taxi vers ${trip.to.split(' · ').pop()}`,
       detail: (() => {
         const unread = taxi.unreadFor(trip.id);
-        const base = `Départ ${hhmm(trip.departureAt)} · ${trip.passengers.length}/${trip.seats} places`;
+        if (trip.myStatus === 'pending_payment') return `Place gardée · paiement à terminer`;
+        const base = `Départ ${hhmm(trip.departureAt)} · ${trip.seatsTaken}/${trip.seats} places`;
         return unread ? `${base} · ${unread} nouveau${unread > 1 ? 'x' : ''} message${unread > 1 ? 's' : ''}` : base;
       })(),
       href: `/taxi/${trip.id}`,
       // Seats locked and not checked in yet: one tap from home.
       action:
-        trip.passengers[0] !== taxi.me && trip.departureAt - now <= TAXI_LOCK_MIN * 60_000 && !trip.checkedIn.includes(taxi.me)
-          ? { label: 'Je suis là', onPress: () => taxi.checkIn(trip.id) }
+        trip.myStatus === 'joined' && trip.passengers[0] !== taxi.me && now >= trip.lockAt && !trip.checkedIn.includes(taxi.me)
+          ? { label: 'Je suis là', onPress: () => taxi.checkIn(trip.id).catch(() => undefined) }
           : undefined,
     });
   }

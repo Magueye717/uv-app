@@ -1,61 +1,132 @@
 import { Ionicons } from '@expo/vector-icons';
 import { router, useLocalSearchParams } from 'expo-router';
-import { useMemo, useState } from 'react';
-import { Alert, Pressable, ScrollView, StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { CaravanSummary, FillBar, OrganizerLine } from '@/components/caravan';
 import { BackButton } from '@/components/ui';
-import { caravanState, caravans, takenSeats, formatDateTime, formatFcfa, paymentMethods, stopDepartureAt, type CaravanStop } from '@/constants/data';
+import { caravanState, formatDateTime, formatFcfa, paymentMethods, type Caravan, type CaravanStop } from '@/constants/data';
 import { PaymentLogo } from '@/components/PaymentLogo';
 import { colors, radii, shadow, typo } from '@/constants/theme';
-import { useTickets } from '@/context/TicketsContext';
+import { useCaravans, type BookingOutcome } from '@/context/CaravansContext';
+import { caravansApi, toCaravan, type SeatMap } from '@/features/caravans/api';
+import type { PaymentMethod } from '@/features/payments/checkout';
+import { ApiError } from '@/lib/api';
 import { haptics } from '@/lib/haptics';
 import { scheduleCaravanReminder } from '@/lib/notifications';
 
-const SEATS_PER_ROW = 4;
-// Seats 1 and 4 of each row of 4 are by the window.
-const isWindow = (n: number) => n % SEATS_PER_ROW === 1 || n % SEATS_PER_ROW === 0;
 const SERVICE_FEE = 0;
+/** The app's payment choices, as the API names them. */
+const METHOD: Record<string, PaymentMethod> = { wave: 'wave', om: 'orange_money' };
 
 export default function CaravaneReservation() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const c = caravans.find((x) => x.id === id) ?? caravans[0];
-  const { ticketFor, book } = useTickets();
-  const existing = ticketFor(c.id);
-  const taken = useMemo(() => takenSeats(c.id, c.totalSeats, c.seats), [c.id, c.totalSeats, c.seats]);
+  const { caravans, book, resume, release, refresh } = useCaravans();
+  // From the list, or straight from a link (notification): then fetched.
+  const [fetched, setFetched] = useState<Caravan | null>(null);
+  const c = caravans.find((x) => x.id === id) ?? fetched;
+  const [map, setMap] = useState<SeatMap | null>(null);
   const [seat, setSeat] = useState<number | null>(null);
   const [showMap, setShowMap] = useState(false);
-  // Front-most free window seat, else the front-most free seat.
+  const [pickedUp, setPickup] = useState<CaravanStop | null>(null);
+  const [droppedOff, setDropoff] = useState<CaravanStop | null>(null);
+  // A single choice is made for the student.
+  const pickup = pickedUp ?? (c?.pickups.length === 1 ? c.pickups[0]! : null);
+  const dropoff = droppedOff ?? (c?.dropoffs.length === 1 ? c.dropoffs[0]! : null);
+  const [payment, setPayment] = useState(paymentMethods[0].id);
+  const [paying, setPaying] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
+
+  const loadSeats = useCallback(() => {
+    if (!id) return;
+    caravansApi.seats(id).then(setMap, () => undefined);
+  }, [id]);
+
+  useEffect(() => {
+    if (!id) return;
+    loadSeats();
+    if (!caravans.some((x) => x.id === id)) {
+      caravansApi.departure(id).then(
+        (d) => setFetched(toCaravan(d)),
+        (err) => setLoadError(err instanceof ApiError ? err.message : 'Départ introuvable.'),
+      );
+    }
+  }, [id, caravans, loadSeats]);
+
+
+  const perRow = map?.seatsPerRow ?? 4;
+  // First and last seat of each row are by the window.
+  const isWindow = (n: number) => (n - 1) % perRow === 0 || (n - 1) % perRow === perRow - 1;
+  const taken = useMemo(() => new Set([...(map?.taken ?? []), ...(map?.blocked ?? [])]), [map]);
+
+  if (!c) {
+    return (
+      <SafeAreaView style={styles.safe}>
+        <View style={styles.head}>
+          <BackButton onPress={() => router.back()} />
+          <Text style={styles.h1}>Réserver ma place</Text>
+          <View style={{ width: 44 }} />
+        </View>
+        {loadError ? <Text style={[styles.muted, { textAlign: 'center', marginTop: 40 }]}>{loadError}</Text> : <ActivityIndicator color={colors.primary} style={{ marginTop: 40 }} />}
+      </SafeAreaView>
+    );
+  }
+
+  // Front-most free window seat, else the front-most free seat (the server suggests the same).
   const pickForMe = () => {
-    const free = Array.from({ length: c.totalSeats }, (_, i) => i + 1).filter((n) => !taken.has(n));
+    const free = Array.from({ length: map?.capacity ?? c.totalSeats }, (_, i) => i + 1).filter((n) => !taken.has(n));
     setSeat(free.find(isWindow) ?? free[0] ?? null);
   };
-  // A single choice is made for the student.
-  const [pickup, setPickup] = useState<CaravanStop | null>(c.pickups.length === 1 ? c.pickups[0] : null);
-  const [dropoff, setDropoff] = useState<CaravanStop | null>(c.dropoffs.length === 1 ? c.dropoffs[0] : null);
-  const [payment, setPayment] = useState(paymentMethods[0].id);
   const { confirmed } = caravanState(c);
-
-  const rows = Array.from({ length: c.totalSeats / SEATS_PER_ROW }, (_, r) =>
-    Array.from({ length: SEATS_PER_ROW }, (_, i) => r * SEATS_PER_ROW + i + 1),
+  const rows = Array.from({ length: Math.ceil((map?.capacity ?? 0) / perRow) }, (_, r) =>
+    Array.from({ length: perRow }, (_, i) => r * perRow + i + 1).filter((n) => n <= (map?.capacity ?? 0)),
   );
   const total = c.price + SERVICE_FEE;
-  const ready = !!seat && !!pickup && !!dropoff;
+  const ready = !!seat && !!pickup && !!dropoff && !paying;
+  const existing = c.myTicketId;
 
-  const pay = () => {
+  const finish = (outcome: BookingOutcome, stop: CaravanStop | null) => {
+    if (outcome.status === 'confirmed') {
+      haptics.success();
+      if (stop) scheduleCaravanReminder(c, stop);
+      router.replace({ pathname: '/billet/[id]', params: { id: outcome.ticketId, nouveau: '1' } });
+    } else if (outcome.status === 'refunded') {
+      Alert.alert('Place perdue', `Le paiement est arrivé après la fin de la réservation et la place a été reprise. ${formatFcfa(total)} te sont remboursés.`);
+    } else if (outcome.status === 'pending') {
+      Alert.alert('Paiement en attente', 'Ta place est gardée 10 minutes. Termine le paiement depuis cet écran.');
+    } else {
+      Alert.alert('Paiement non effectué', 'Ta place a été libérée. Tu peux réessayer.');
+    }
+    loadSeats();
+  };
+
+  const pay = async () => {
     if (!seat || !pickup || !dropoff) return;
-    const ticket = book({ caravanId: c.id, seat, pickup, dropoff, paymentId: payment, price: c.price });
-    if (ticket) scheduleCaravanReminder(c, { ...pickup, at: stopDepartureAt(c, pickup) });
-    if (!ticket) return;
-    haptics.success();
+    setPaying(true);
+    try {
+      finish(await book(c.id, { seat, pickupStopId: pickup.stopId, dropoffStopId: dropoff.stopId, method: METHOD[payment] ?? 'wave' }), pickup);
+    } catch (err) {
+      if (err instanceof ApiError && err.code === 'SEAT_TAKEN') {
+        setSeat(null);
+        loadSeats();
+      }
+      Alert.alert('Réservation impossible', err instanceof ApiError ? err.message : 'Réessaie dans un instant.');
+      refresh();
+    } finally {
+      setPaying(false);
+    }
+  };
 
-    const method = paymentMethods.find((m) => m.id === payment)?.name;
-    Alert.alert(
-      'Paiement envoyé',
-      `Valide le paiement de ${formatFcfa(total)} sur ${method}. Ton argent reste bloqué jusqu’au départ : si la caravane est annulée, tu es remboursé.`,
-      [{ text: 'Voir mon billet', onPress: () => router.replace({ pathname: '/billet/[id]', params: { id: ticket.id, nouveau: '1' } }) }],
-    );
+  const resumePayment = async () => {
+    setPaying(true);
+    try {
+      finish(await resume(c), c.pickups[0] ?? null);
+    } catch (err) {
+      Alert.alert('Paiement impossible', err instanceof ApiError ? err.message : 'Réessaie dans un instant.');
+    } finally {
+      setPaying(false);
+    }
   };
 
   return (
@@ -76,7 +147,8 @@ export default function CaravaneReservation() {
         <View style={[styles.card, shadow.card, { gap: 10 }]}>
           <OrganizerLine organizer={c.organizer} />
           <Text style={styles.muted}>
-            {c.organizer.kind} · {c.organizer.trips ? `${c.organizer.trips} trajets effectués` : 'Premier trajet sur l’app'} · {c.vehicle.label} ({c.vehicle.plate})
+            {c.organizer.kind} · {c.organizer.trips ? `${c.organizer.trips} trajets effectués` : 'Premier trajet sur l’app'} · {c.vehicle.label}
+            {c.vehicle.plate ? ` (${c.vehicle.plate})` : ''}
           </Text>
           <View style={styles.divider} />
           <Guarantee icon="document-text-outline" text="Assurance, visite technique et permis du chauffeur vérifiés" />
@@ -92,18 +164,38 @@ export default function CaravaneReservation() {
           <Guarantee icon="refresh-outline" text="Annulation gratuite jusqu’à 24 h avant le départ, puis 10 % de frais" />
         </View>
 
-        {existing ? (
+        {existing || c.purchasedHere ? (
           <View style={[styles.card, shadow.card, styles.already]}>
             <Ionicons name="ticket-outline" size={28} color={colors.primary} />
-            <Text style={styles.alreadyTitle}>
-              {existing.status === 'transferred' ? 'Tu as transféré ton billet' : 'Tu as déjà un billet pour ce départ'}
-            </Text>
+            <Text style={styles.alreadyTitle}>{existing ? 'Tu as déjà un billet pour ce départ' : 'Tu as transféré ton billet'}</Text>
             <Text style={styles.alreadyText}>
               Un seul billet par étudiant et par caravane, pour que chaque place aille à un vrai voyageur.
             </Text>
-            <Pressable style={styles.alreadyBtn} onPress={() => router.replace(`/billet/${existing.id}`)}>
-              <Text style={styles.alreadyBtnText}>Voir mon billet</Text>
+            {existing && (
+              <Pressable style={styles.alreadyBtn} onPress={() => router.replace(`/billet/${existing}`)}>
+                <Text style={styles.alreadyBtnText}>Voir mon billet</Text>
+              </Pressable>
+            )}
+          </View>
+        ) : c.myBooking ? (
+          <View style={[styles.card, shadow.card, styles.already]}>
+            <Ionicons name="time-outline" size={28} color={colors.primary} />
+            <Text style={styles.alreadyTitle}>Place n° {c.myBooking.seat} gardée pour toi</Text>
+            <Text style={styles.alreadyText}>Termine le paiement avant {formatDateTime(Date.parse(c.myBooking.holdExpiresAt))}, sinon elle est rendue aux autres.</Text>
+            <Pressable style={styles.alreadyBtn} onPress={resumePayment} disabled={paying}>
+              <Text style={styles.alreadyBtnText}>{paying ? 'Paiement…' : `Payer ${formatFcfa(total)}`}</Text>
             </Pressable>
+            <Pressable
+              onPress={() => release(c.myBooking!.id).then(loadSeats, () => undefined)}
+              hitSlop={8}
+              accessibilityRole="button">
+              <Text style={styles.change}>Libérer la place</Text>
+            </Pressable>
+          </View>
+        ) : !c.bookingOpen ? (
+          <View style={[styles.card, shadow.card, styles.already]}>
+            <Ionicons name="lock-closed-outline" size={28} color={colors.muted} />
+            <Text style={styles.alreadyTitle}>{c.seats ? 'Réservations fermées' : 'Départ complet'}</Text>
           </View>
         ) : (
           <>
@@ -123,7 +215,7 @@ export default function CaravaneReservation() {
                   <View style={{ flex: 1 }}>
                     <Text style={styles.payName}>Place n° {seat}</Text>
                     <Text style={styles.muted}>
-                      {isWindow(seat) ? 'Fenêtre' : 'Couloir'} · rangée {Math.ceil(seat / SEATS_PER_ROW)}
+                      {isWindow(seat) ? 'Fenêtre' : 'Couloir'} · rangée {Math.ceil(seat / perRow)}
                     </Text>
                   </View>
                   <Pressable onPress={() => setShowMap(true)} hitSlop={10} accessibilityRole="button">
@@ -158,6 +250,7 @@ export default function CaravaneReservation() {
                   <Ionicons name="bus-outline" size={12} color={colors.primary} />
                   <Text style={styles.frontText}>Avant du bus</Text>
                 </View>
+                {!map && <ActivityIndicator color={colors.primary} />}
                 {rows.map((row) => (
                   <View key={row[0]} style={styles.seatRow}>
                     {row.map((n, i) => {
@@ -174,7 +267,7 @@ export default function CaravaneReservation() {
                           accessibilityLabel={isTaken ? `Place ${n}, occupée` : `Place ${n}`}
                           style={[
                             styles.seat,
-                            i === 2 && styles.afterAisle,
+                            i === Math.floor(perRow / 2) && styles.afterAisle,
                             isTaken ? styles.seatTaken : isSelected ? styles.seatSelected : styles.seatFree,
                           ]}>
                           {isTaken ? (
@@ -230,7 +323,7 @@ export default function CaravaneReservation() {
           <View style={[styles.card, shadow.card, { gap: 8 }]}>
             <Text style={styles.recapTitle}>Récapitulatif</Text>
             <RecapRow
-              k={seat ? `Place n° ${seat} · Rangée ${Math.ceil(seat / SEATS_PER_ROW)}` : 'Aucune place choisie'}
+              k={seat ? `Place n° ${seat} · Rangée ${Math.ceil(seat / perRow)}` : 'Aucune place choisie'}
               v={formatFcfa(c.price)}
             />
             <RecapRow k="Montée" v={pickup ? `${pickup.place} · ${pickup.time}` : 'À choisir'} />
@@ -246,7 +339,9 @@ export default function CaravaneReservation() {
           <Pressable disabled={!ready} onPress={pay} style={[styles.pay, !ready && styles.payDisabled]}>
             <Ionicons name="checkmark" size={18} color="#fff" />
             <Text style={styles.payText}>
-              {!seat
+              {paying
+                ? 'Paiement en cours…'
+                : !seat
                 ? 'Choisis une place'
                 : !pickup
                   ? 'Choisis ton point de montée'
@@ -301,11 +396,11 @@ function StopPicker({
       <Text style={styles.section}>{title}</Text>
       <View style={[styles.card, shadow.card, styles.stopList]}>
         {stops.map((s, i) => {
-          const on = s.place === value?.place;
+          const on = s.stopId === value?.stopId;
           const only = stops.length === 1;
           return (
             <Pressable
-              key={s.place}
+              key={s.stopId}
               onPress={() => onChange(s)}
               disabled={only}
               style={[styles.stopRow, on && styles.stopRowOn]}

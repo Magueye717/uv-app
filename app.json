@@ -16,7 +16,12 @@
         "foregroundImage": "./assets/images/android-icon-foreground.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO"
+      ],
+      "package": "com.anonymous.ugbcampus"
     },
     "web": {
       "bundler": "metro",
@@ -54,7 +59,8 @@
           "cameraPermission": "La caméra sert à photographier un objet trouvé ou perdu.",
           "photosPermission": "Tes photos servent à illustrer un objet trouvé ou perdu."
         }
-      ]
+      ],
+      "expo-secure-store"
     ],
     "experiments": {
       "typedRoutes": true

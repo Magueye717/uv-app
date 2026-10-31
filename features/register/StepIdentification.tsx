@@ -5,6 +5,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { Field, LabeledField, PrimaryButton } from '@/components/ui';
 import { colors, radii, typo } from '@/constants/theme';
+import type { AccountConflict } from './auth';
 import {
   formatPhone,
   normalizeStudentId,
@@ -15,7 +16,13 @@ import {
 } from './validation';
 
 export type IdentificationValues = { studentId: string; phone: string };
-export type IdentificationError = 'exists' | 'network' | null;
+/** `exists`: the account banner with a sign-in link, naming the number taken; otherwise the server's message (rate limit, offline…). */
+export type IdentificationError = { exists: AccountConflict } | { message: string } | null;
+
+const existsLabel: Record<AccountConflict, string> = {
+  student_number: 'Ce numéro étudiant a déjà un compte.',
+  phone: 'Ce numéro de téléphone a déjà un compte.',
+};
 
 type Props = {
   values: IdentificationValues;
@@ -66,18 +73,18 @@ export function StepIdentification({ values, onChange, onSubmit, submitting, sub
         />
       </LabeledField>
 
-      {submitError === 'exists' && (
+      {submitError && 'exists' in submitError && (
         <View style={styles.banner} accessibilityLiveRegion="polite">
           <Ionicons name="person-outline" size={18} color={colors.danger} />
-          <Text style={styles.bannerText}>Ce compte existe déjà.</Text>
+          <Text style={styles.bannerText}>{existsLabel[submitError.exists]}</Text>
           <Pressable onPress={() => router.replace('/(auth)/login')} hitSlop={8}>
             <Text style={styles.bannerLink}>Se connecter</Text>
           </Pressable>
         </View>
       )}
-      {submitError === 'network' && (
+      {submitError && 'message' in submitError && (
         <View style={styles.banner} accessibilityLiveRegion="polite">
-          <Text style={styles.bannerText}>Une erreur est survenue. Réessaie.</Text>
+          <Text style={styles.bannerText}>{submitError.message}</Text>
         </View>
       )}
 

@@ -1,50 +1,43 @@
-// Mock auth API. Replace each function's body with a real HTTP call; the screens only depend
-// on these signatures. Delays simulate network latency.
+// Auth API used by sign-up, sign-in and "mot de passe oublié". Errors are ApiError (lib/api): their `message`
+// is French and can be shown as is; `code` drives the screen logic.
+import { api, ApiError, deviceInfo, type Tokens } from '@/lib/api';
+
+import type { CampusKey } from './validation';
 
 export const OTP_LENGTH = 4;
-export const OTP_TTL_MS = 5 * 60 * 1000;
-export const OTP_MAX_ATTEMPTS = 5;
 export const OTP_RESEND_DELAY_S = 60;
 
-/** Code accepted by the mock. Shown on screen in development builds only. */
+/** Code accepted by the backend in development (OTP_DEV_MODE). Shown on screen in development builds only. */
 export const DEV_OTP = '1234';
 
-export type OtpChannel = 'sms' | 'whatsapp' | 'email';
+/** Version of the terms of use the student accepts at sign-up. */
+export const TERMS_VERSION = '2026-01';
 
-export type User = {
-  id: string;
-  studentId: string;
-  phone: string;
-  firstName: string;
-  lastName: string;
-  campus: string;
-  /** Null when the student lives off campus. */
-  village: string | null;
-  room: string | null;
-};
+export type OtpChannel = 'sms' | 'whatsapp' | 'email';
+export type OtpPurpose = 'register' | 'reset_password';
+
+/** A verification in progress: the id the next calls refer to. */
+export type OtpChallenge = { challengeId: string; expiresIn: number; resendAfter: number; codeLength: number };
 
 export type VerifyResult =
-  | { ok: true }
+  | { ok: true; verificationToken: string }
   | { ok: false; reason: 'invalid'; attemptsLeft: number }
   | { ok: false; reason: 'expired' | 'locked' };
 
-const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+/** Which of the two numbers already has an account. */
+export type AccountConflict = 'student_number' | 'phone';
 
-// Seed data: an existing account to test "Ce compte existe déjà", and a student with a linked e-mail.
-const accounts: { studentId: string; phone: string }[] = [{ studentId: 'P210001', phone: '771234567' }];
-const linkedEmails: Record<string, string> = { P232055: 'awa.diop@ugb.edu.sn' };
-
-let pendingOtp: { phone: string; code: string; expiresAt: number; attempts: number } | null = null;
-
-export async function accountExists(studentId: string, phone: string): Promise<boolean> {
-  await wait(700);
-  return accounts.some((a) => a.studentId === studentId || a.phone === phone);
+/** Step 1: the number that already has an account, or null when both are free. */
+export async function accountConflict(studentId: string, phone: string): Promise<AccountConflict | null> {
+  const res = await api<{ available: boolean; conflict?: AccountConflict }>('POST', '/auth/register/check', {
+    body: { studentNumber: studentId, phone },
+  });
+  return res.available ? null : (res.conflict ?? 'phone');
 }
 
-/** E-mail linked to the student ID in the university directory, if any. */
-export async function getLinkedEmail(studentId: string): Promise<string | null> {
-  await wait(200);
-  return linkedEmails[studentId] ?? null;
+/** The backend has no university directory yet, so no e-mail fallback for the code (open question Q-14). */
+export async function getLinkedEmail(_studentId: string): Promise<string | null> {
+  return null;
 }
 
 export function maskEmail(email: string): string {
@@ -52,27 +45,69 @@ export function maskEmail(email: string): string {
   return `${user.slice(0, 2)}•••${user.slice(-1)}@${domain}`;
 }
 
-export async function sendOtp(phone: string, _channel: OtpChannel): Promise<void> {
-  await wait(800);
-  pendingOtp = { phone, code: DEV_OTP, expiresAt: Date.now() + OTP_TTL_MS, attempts: 0 };
+export function sendOtp(phone: string, purpose: OtpPurpose, channel: OtpChannel = 'sms'): Promise<OtpChallenge> {
+  return api<OtpChallenge>('POST', '/auth/otp', { body: { phone, purpose, channel } });
 }
 
-export async function verifyOtp(code: string): Promise<VerifyResult> {
-  await wait(600);
-  if (!pendingOtp || Date.now() > pendingOtp.expiresAt) return { ok: false, reason: 'expired' };
-  if (pendingOtp.attempts >= OTP_MAX_ATTEMPTS) return { ok: false, reason: 'locked' };
-  if (code === pendingOtp.code) {
-    pendingOtp = null;
-    return { ok: true };
+/** New code on the same challenge (after the 60 s delay). */
+export function resendOtp(challengeId: string, channel: OtpChannel = 'sms'): Promise<OtpChallenge> {
+  return api<OtpChallenge>('POST', `/auth/otp/${challengeId}/resend`, { body: { channel } });
+}
+
+export async function verifyOtp(challengeId: string, code: string): Promise<VerifyResult> {
+  try {
+    const { verificationToken } = await api<{ verificationToken: string }>('POST', `/auth/otp/${challengeId}/verify`, { body: { code } });
+    return { ok: true, verificationToken };
+  } catch (err) {
+    if (!(err instanceof ApiError)) throw err;
+    if (err.code === 'OTP_INVALID') return { ok: false, reason: 'invalid', attemptsLeft: Number(err.details.attemptsLeft ?? 0) };
+    if (err.code === 'OTP_EXPIRED') return { ok: false, reason: 'expired' };
+    if (err.code === 'OTP_LOCKED') return { ok: false, reason: 'locked' };
+    throw err;
   }
-  pendingOtp.attempts += 1;
-  const attemptsLeft = OTP_MAX_ATTEMPTS - pendingOtp.attempts;
-  return attemptsLeft > 0 ? { ok: false, reason: 'invalid', attemptsLeft } : { ok: false, reason: 'locked' };
 }
 
-export async function createAccount(input: Omit<User, 'id'> & { password: string }): Promise<User> {
-  await wait(900);
-  const { password: _password, ...profile } = input;
-  accounts.push({ studentId: profile.studentId, phone: profile.phone });
-  return { id: `u_${Date.now()}`, ...profile };
+export type NewAccount = {
+  verificationToken: string;
+  studentId: string;
+  firstName: string;
+  lastName: string;
+  campus: CampusKey;
+  onCampus: boolean;
+  village: string | null;
+  room: string | null;
+  password: string;
+};
+
+/** Step 3: creates the account for the verified phone and returns the session tokens (the student is signed in). */
+export async function createAccount(input: NewAccount): Promise<Tokens> {
+  const { tokens } = await api<{ userId: string; tokens: Tokens }>('POST', '/auth/register', {
+    body: {
+      verificationToken: input.verificationToken,
+      studentNumber: input.studentId,
+      firstName: input.firstName,
+      lastName: input.lastName,
+      campus: input.campus,
+      onCampus: input.onCampus,
+      village: input.onCampus ? input.village : null,
+      room: input.onCampus ? input.room : null,
+      password: input.password,
+      termsVersion: TERMS_VERSION,
+      device: deviceInfo(),
+    },
+  });
+  return tokens;
+}
+
+/** Sign-in with a phone number (or a student number) and a password. */
+export async function signIn(identifier: string, password: string): Promise<Tokens> {
+  const { tokens } = await api<{ userId: string; tokens: Tokens }>('POST', '/auth/login', {
+    body: { identifier, password, device: deviceInfo() },
+  });
+  return tokens;
+}
+
+/** Last step of "mot de passe oublié": every existing session ends. */
+export function resetPassword(verificationToken: string, newPassword: string): Promise<void> {
+  return api<void>('POST', '/auth/password/reset', { body: { verificationToken, newPassword } });
 }

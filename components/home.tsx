@@ -17,16 +17,15 @@ import {
 import {
   adBanners,
   campusAlert,
-  caravans,
   formatFcfa,
   mealTimes,
   publicMenus,
   schedule,
-  taxiSeatPrice,
   weekDays,
   type DishStatus,
 } from '@/constants/data';
 import { colors, radii, shadow, typo } from '@/constants/theme';
+import { useCaravans } from '@/context/CaravansContext';
 import { useTaxi } from '@/context/TaxiContext';
 
 const BODY_PADDING = 20;
@@ -150,9 +149,10 @@ function formatTimeLeft(ms: number) {
 
 export function CaravanCard() {
   const now = useNow();
+  const { caravans } = useCaravans();
   // Departures from campus that are still bookable, soonest first. Full buses are skipped.
   const upcoming = caravans
-    .filter((c) => c.from === 'UGB' && c.seats > 0 && c.departureAt > now)
+    .filter((c) => c.from === 'UGB' && c.seats > 0 && c.bookingOpen && c.departureAt > now)
     .sort((a, b) => a.departureAt - b.departureAt);
   const next = upcoming[0];
   const othersThisWeek = upcoming.slice(1).filter((c) => c.departureAt - now < WEEK_MS).length;
@@ -256,7 +256,7 @@ export function TaxiCard() {
   const now = useNow();
   const { trips, me } = useTaxi();
   const open = trips
-    .filter((t) => !t.departed && t.departureAt > now && !t.passengers.includes(me) && t.passengers.length < t.seats)
+    .filter((t) => !t.departed && t.status === 'open' && t.departureAt > now && !t.passengers.includes(me) && t.seatsTaken < t.seats)
     .sort((a, b) => a.departureAt - b.departureAt);
   const next = open[0];
   const go = () => router.push({ pathname: '/(tabs)/caravanes', params: { vue: 'taxi' } });
@@ -286,10 +286,10 @@ export function TaxiCard() {
           </View>
           <View style={styles.rowBetween}>
             <View style={{ gap: 2, flexShrink: 1 }}>
-              <Text style={styles.detail}>{formatFcfa(taxiSeatPrice(next))} / place</Text>
+              <Text style={styles.detail}>{formatFcfa(next.seatPrice)} / place</Text>
               <Text style={styles.seats}>
-                {next.seats - next.passengers.length} place{next.seats - next.passengers.length > 1 ? 's' : ''} libre
-                {next.seats - next.passengers.length > 1 ? 's' : ''}
+                {next.seats - next.seatsTaken} place{next.seats - next.seatsTaken > 1 ? 's' : ''} libre
+                {next.seats - next.seatsTaken > 1 ? 's' : ''}
               </Text>
             </View>
             <Pressable style={styles.cta} onPress={go} accessibilityRole="button">

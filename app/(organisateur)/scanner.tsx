@@ -1,19 +1,15 @@
 import { router, useFocusEffect } from 'expo-router';
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useState } from 'react';
 import { ScrollView, StyleSheet, Text } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { caravans } from '@/constants/data';
 import { colors, typo } from '@/constants/theme';
-import { useAuth } from '@/context/AuthContext';
 import { TicketScanner } from '@/features/organizer/TicketScanner';
 import { useTicketCheck } from '@/features/organizer/useTicketCheck';
 
-/** Scans any ticket of the organizer's departures: the QR says which one, nothing to pick first. */
+/** Scans any ticket of the organizer's departures: the server reads which one from the QR, nothing to pick first. */
 export default function Scanner() {
-  const { organizer } = useAuth();
-  const mine = useMemo(() => caravans.filter((c) => c.organizer.id === organizer?.id), [organizer]);
-  const check = useTicketCheck(mine);
+  const check = useTicketCheck();
   const [focused, setFocused] = useState(false);
   useFocusEffect(
     useCallback(() => {

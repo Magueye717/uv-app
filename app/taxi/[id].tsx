@@ -5,7 +5,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { EmptyState } from '@/components/states';
 import { BackButton } from '@/components/ui';
-import { TAXI_CHAT_HOURS, TAXI_LOCK_MIN } from '@/constants/data';
+import { TAXI_LOCK_MIN } from '@/constants/data';
 import { colors, radii, shadow, typo } from '@/constants/theme';
 import { useTaxi } from '@/context/TaxiContext';
 import { Avatar, ChatButton, Rule, TripCard, useNow } from '@/features/taxi/SunuTaxiBoard';
@@ -25,7 +25,7 @@ export default function TaxiTripScreen() {
       <View style={styles.head}>
         <BackButton onPress={back} />
         <Text style={styles.h1}>Trajet Sunu Taxi</Text>
-        {t && t.passengers.includes(taxi.me) && now < t.departureAt + TAXI_CHAT_HOURS * 3_600_000 ? (
+        {t && t.passengers.includes(taxi.me) && now < t.chatClosesAt ? (
           <ChatButton count={taxi.unreadFor(t.id)} onPress={() => router.push(`/trajet/${t.id}`)} />
         ) : (
           <View style={{ width: 44 }} />
@@ -44,10 +44,12 @@ export default function TaxiTripScreen() {
             busy={!!actions.current && actions.current.id !== t.id}
             onBusy={actions.busy}
             onJoin={() => actions.join(t)}
+            onPay={() => actions.resumePayment(t)}
             onLeave={(locked) => actions.leave(t, locked)}
             onCancel={(locked) => actions.cancel(t, locked)}
-            onCheckIn={() => taxi.checkIn(t.id)}
+            onCheckIn={() => taxi.checkIn(t.id).catch(() => undefined)}
             onDepart={() => actions.depart(t)}
+            onClaim={() => actions.claim(t)}
             messageCount={taxi.unreadFor(t.id)}
             onChat={() => router.push(`/trajet/${t.id}`)}
           />
@@ -59,7 +61,7 @@ export default function TaxiTripScreen() {
               const here = !!p && t.checkedIn.includes(p);
               return (
                 <View key={i} style={[styles.passenger, i > 0 && styles.divider]}>
-                  {p ? <Avatar initials={p} highlight={p === taxi.me} here={here} /> : <View style={styles.freeSeat} />}
+                  {p ? <Avatar initials={taxi.initialsOf(p)} highlight={p === taxi.me} here={here} /> : <View style={styles.freeSeat} />}
                   <View style={{ flex: 1 }}>
                     <Text style={[styles.name, !p && { color: colors.muted2 }]}>
                       {p ? (p === taxi.me ? 'Toi' : taxi.nameOf(p)) : 'Place libre'}
@@ -80,7 +82,7 @@ export default function TaxiTripScreen() {
           <Text style={styles.section}>Règles</Text>
           <View style={[styles.card, shadow.card, { gap: 10, paddingVertical: 14 }]}>
             <Rule icon="wallet-outline" text="Tu paies ta place en rejoignant : prix fixe, connu d’avance." />
-            <Rule icon="lock-closed-outline" text={`Places verrouillées ${TAXI_LOCK_MIN} min avant : quitter n’est plus remboursé.`} />
+            <Rule icon="lock-closed-outline" text={`Places verrouillées ${TAXI_LOCK_MIN} min avant (à mi-chemin pour un départ proche) : quitter n’est plus remboursé.`} />
             <Rule icon="shield-checkmark-outline" text="Trajet annulé par l’organisateur : remboursé à 100 %." />
           </View>
         </ScrollView>

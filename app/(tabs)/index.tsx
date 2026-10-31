@@ -15,7 +15,7 @@ import { setupNotifications } from '@/lib/notifications';
 export default function HomeScreen() {
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
-  const { unread } = useNotifications();
+  const { unreadCount } = useNotifications();
   const name = user?.firstName ?? 'Awa';
 
   useEffect(() => {
@@ -37,9 +37,9 @@ export default function HomeScreen() {
             onPress={() => router.push('/notifications')}
             style={styles.bell}
             accessibilityRole="button"
-            accessibilityLabel={bellLabel(unread.length)}>
+            accessibilityLabel={bellLabel(unreadCount)}>
             <Ionicons name="notifications-outline" size={22} color="#fff" />
-            {unread.length > 0 && <View style={styles.dot} />}
+            {unreadCount > 0 && <View style={styles.dot} />}
           </Pressable>
         </View>
       </View>

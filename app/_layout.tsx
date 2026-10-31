@@ -3,14 +3,14 @@ import { StatusBar } from 'expo-status-bar';
 
 import { colors } from '@/constants/theme';
 import { AuthProvider, useAuth } from '@/context/AuthContext';
+import { CaravansProvider } from '@/context/CaravansContext';
 import { CartProvider } from '@/context/CartContext';
 import { LostProvider } from '@/context/LostContext';
 import { NotificationsProvider } from '@/context/NotificationsContext';
 import { OrdersProvider } from '@/context/OrdersContext';
 import { OfflineBanner } from '@/components/states';
 import { TaxiProvider } from '@/context/TaxiContext';
-import { TicketsProvider } from '@/context/TicketsContext';
-import { BoardingProvider } from '@/features/organizer/boarding';
+import { ChatsProvider } from '@/features/chat/ChatContext';
 import { useNotificationRouting } from '@/lib/notifications';
 
 function NotificationRouter() {
@@ -44,6 +44,7 @@ function Screens() {
         <Stack.Screen name="billet/[id]" />
         <Stack.Screen name="taxi/[id]" />
         <Stack.Screen name="trajet/[id]" />
+        <Stack.Screen name="paiement/retour" options={{ animation: 'none' }} />
         <Stack.Screen name="lieu/[id]" />
         <Stack.Screen name="objet/[id]" />
         <Stack.Screen name="objet/declarer" />
@@ -64,19 +65,20 @@ export default function RootLayout() {
       <NotificationsProvider>
         <CartProvider>
           <OrdersProvider>
-            <TicketsProvider>
-              <TaxiProvider>
-                <LostProvider>
-                  <NotificationRouter />
-                  <StatusBar style="light" />
-                  <BoardingProvider>
+            <CaravansProvider>
+              {/* Every conversation (taxi now, lost & found next) and the app's WebSocket. */}
+              <ChatsProvider>
+                <TaxiProvider>
+                  <LostProvider>
+                    <NotificationRouter />
+                    <StatusBar style="light" />
                     <Screens />
-                  </BoardingProvider>
-                  {/* Above every screen while there's no connection. */}
-                  <OfflineBanner />
-                </LostProvider>
-              </TaxiProvider>
-            </TicketsProvider>
+                    {/* Above every screen while there's no connection. */}
+                    <OfflineBanner />
+                  </LostProvider>
+                </TaxiProvider>
+              </ChatsProvider>
+            </CaravansProvider>
           </OrdersProvider>
         </CartProvider>
       </NotificationsProvider>

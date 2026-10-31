@@ -28,7 +28,7 @@ export function TicketScanner({
   onOpenList,
   active = true,
 }: {
-  check: (raw: string) => ScanResult;
+  check: (raw: string) => Promise<ScanResult>;
   onOpenList?: (caravanId: string) => void;
   active?: boolean;
 }) {
@@ -38,9 +38,11 @@ export function TicketScanner({
   const flash = useSharedValue(0);
   const flashStyle = useAnimatedStyle(() => ({ opacity: flash.get() }));
 
-  const read = (raw: string) => {
-    if (result || !raw.trim()) return; // the camera keeps firing while the code is in view
-    const r = check(raw);
+  const [checking, setChecking] = useState(false);
+  const read = async (raw: string) => {
+    if (result || checking || !raw.trim()) return; // the camera keeps firing while the code is in view
+    setChecking(true);
+    const r = await check(raw).finally(() => setChecking(false));
     TONES[r.tone].feel();
     flash.set(withSequence(withTiming(0.55, { duration: motion.fast }), withTiming(0, { duration: motion.slow })));
     setResult(r);
@@ -58,7 +60,7 @@ export function TicketScanner({
                   style={StyleSheet.absoluteFill}
                   facing="back"
                   barcodeScannerSettings={{ barcodeTypes: ['qr'] }}
-                  onBarcodeScanned={result ? undefined : ({ data }: BarcodeScanningResult) => read(data)}
+                  onBarcodeScanned={result || checking ? undefined : ({ data }: BarcodeScanningResult) => read(data)}
                 />
                 <View style={styles.frame} pointerEvents="none" />
               </>
@@ -100,7 +102,7 @@ export function TicketScanner({
           <Text style={styles.hint}>Vise le QR code du billet. Téléphone éteint ? Saisis le code écrit sous le QR.</Text>
           <Field
             icon="ticket-outline"
-            placeholder="Code du billet, ex. TC305"
+            placeholder="Code du billet, ex. 7KQ2MX"
             autoCapitalize="characters"
             autoCorrect={false}
             value={code}

@@ -1,0 +1,226 @@
+// Caravans and tickets on the backend. Tickets are generic (caravan seats now, other events later): a ticket
+// has a `kind`, an `event` card, and kind-specific `details`. Errors are ApiError: `message` is French.
+import type { Caravan, CaravanOrganizer, CaravanStop } from '@/constants/data';
+import { paymentReturnUrl, type PaymentDto, type PaymentMethod } from '@/features/payments/checkout';
+import { api } from '@/lib/api';
+
+const auth = { auth: true } as const;
+
+type StopDto = { stopId: string; place: string; at: string };
+type OrgCardDto = { id: string; slug: string; name: string; category: string; level: string; rating: number | null; trips: number };
+
+export type DepartureDto = {
+  id: string;
+  code: string;
+  status: string;
+  organizer: OrgCardDto;
+  direction: 'aller' | 'retour';
+  from: string;
+  to: string;
+  departureAt: string;
+  pickups: StopDto[];
+  dropoffs: StopDto[];
+  price: number;
+  totalSeats: number;
+  seatsFree: number;
+  seatsBooked: number;
+  minPassengers: number;
+  confirmBy: string;
+  confirmed: boolean;
+  bookingOpen: boolean;
+  vehicle: { label: string; plate: string | null };
+  myTicketId?: string | null;
+  purchasedHere?: boolean;
+  myBooking?: { id: string; seat: number; holdExpiresAt: string; payment: { reference: string; checkoutUrl: string | null } | null } | null;
+};
+
+export type OrgDepartureDto = DepartureDto & {
+  vehicle: { label: string; plate: string };
+  stopsLeft: { stopId: string; at: string }[];
+  counts: { booked: number; admitted: number };
+  cancellation: { at: string; reason: string } | null;
+  /** After departure: what the owner can collect, and the payout once asked for. */
+  claim: { amount: number; payout: { id: string; status: string; amount: number } | null } | null;
+};
+
+export type SeatMap = { capacity: number; seatsPerRow: number; blocked: number[]; taken: number[]; suggested: number | null };
+
+export type BookingDto = {
+  id: string;
+  departureId: string;
+  status: 'held' | 'confirmed' | 'cancelled' | 'expired';
+  seat: number;
+  holdExpiresAt: string;
+  ticketId: string | null;
+  payment: { reference: string; status: string; checkoutUrl: string | null } | null;
+};
+
+export type CancellationQuote = { allowed: true; fee: number; refund: number; freeUntil: string | null } | { allowed: false; reason: string };
+
+export type TransferDto = {
+  id: string;
+  ticketId: string;
+  status: 'pending' | 'accepted' | 'declined' | 'cancelled' | 'expired';
+  expiresAt: string;
+  from: { name: string };
+  to: { name: string; phoneMasked: string };
+};
+
+/** `details` of a caravan ticket. */
+export type CaravanTicketDetails = {
+  departureId: string;
+  direction: 'aller' | 'retour';
+  from: string;
+  to: string;
+  pickup: StopDto;
+  dropoff: StopDto;
+  vehicle: { label: string; plate: string };
+  confirmed: boolean;
+  minPassengers: number;
+  seatsBooked: number;
+  confirmBy: string;
+};
+
+export type TicketDto = {
+  id: string;
+  kind: 'caravan_seat';
+  code: string;
+  status: 'active' | 'cancelled' | 'transferred';
+  seat: number | null;
+  price: number;
+  paidWith: PaymentMethod;
+  event: { id: string; kind: string; title: string; startsAt: string; status: string; organizer: OrgCardDto };
+  details: CaravanTicketDetails;
+  qr: string | null;
+  admittedAt: string | null;
+  cancellation: { at: string; fee: number; refundAmount: number; reason: string } | null;
+  cancellationQuote: CancellationQuote | null;
+  transferDeadline: string | null;
+  transfer: TransferDto | null;
+};
+
+export type IncomingTransferDto = TransferDto & { seat: number | null; event: TicketDto['event'] | null; details: CaravanTicketDetails };
+
+export type ManifestDto = {
+  departure: OrgDepartureDto;
+  passengers: {
+    ticketId: string;
+    code: string;
+    seat: number | null;
+    name: string;
+    phone: string;
+    pickupStopId: string;
+    dropoffStopId: string;
+    admitted: boolean;
+    admittedAt: string | null;
+    transferred: boolean;
+  }[];
+};
+
+export type ScanResultDto = {
+  result: 'admitted' | 'duplicate' | 'rejected';
+  tone: 'success' | 'warning' | 'danger';
+  title: string;
+  text: string;
+  reason: string | null;
+  eventId: string | null;
+  ticket: { id: string; code: string; seat: number | null } | null;
+  holder: { name: string } | null;
+};
+
+export const caravansApi = {
+  departures: (direction?: 'aller' | 'retour') => api<{ items: DepartureDto[] }>('GET', `/caravans/departures${direction ? `?direction=${direction}` : ''}`, auth),
+  departure: (id: string) => api<DepartureDto>('GET', `/caravans/departures/${id}`, auth),
+  seats: (id: string) => api<SeatMap>('GET', `/caravans/departures/${id}/seats`, auth),
+  book: (id: string, body: { seat?: number; pickupStopId: string; dropoffStopId: string; method: PaymentMethod }) =>
+    api<{ booking: BookingDto; payment: PaymentDto }>('POST', `/caravans/departures/${id}/bookings`, { ...auth, body: { ...body, returnUrl: paymentReturnUrl() } }),
+  booking: (id: string) => api<BookingDto>('GET', `/caravans/bookings/${id}`, auth),
+  release: (id: string) => api<void>('DELETE', `/caravans/bookings/${id}`, auth),
+
+  tickets: () => api<{ items: TicketDto[] }>('GET', '/tickets', auth),
+  ticket: (id: string) => api<TicketDto>('GET', `/tickets/${id}`, auth),
+  cancelTicket: (id: string) => api<{ refundAmount: number; fee: number }>('POST', `/tickets/${id}/cancel`, auth),
+  transfer: (id: string, recipientPhone: string) => api<TransferDto>('POST', `/tickets/${id}/transfers`, { ...auth, body: { recipientPhone } }),
+  transfers: (direction: 'incoming' | 'outgoing') => api<{ items: IncomingTransferDto[] }>('GET', `/ticket-transfers?direction=${direction}`, auth),
+  acceptTransfer: (id: string) => api<{ status: string; ticketId: string | null }>('POST', `/ticket-transfers/${id}/accept`, auth),
+  declineTransfer: (id: string) => api<{ status: string }>('POST', `/ticket-transfers/${id}/decline`, auth),
+  withdrawTransfer: (id: string) => api<void>('POST', `/ticket-transfers/${id}/cancel`, auth),
+
+  // Organizer
+  orgDepartures: (orgId: string, scope: 'upcoming' | 'past' = 'upcoming') => api<{ items: OrgDepartureDto[] }>('GET', `/org/${orgId}/departures?scope=${scope}`, auth),
+  manifest: (orgId: string, id: string) => api<ManifestDto>('GET', `/org/${orgId}/departures/${id}/manifest`, auth),
+  scan: (orgId: string, body: { qr?: string; code?: string; ticketId?: string; eventId?: string; locationId?: string; clientScanId: string }) =>
+    api<ScanResultDto>('POST', `/org/${orgId}/admissions`, { ...auth, body }),
+  unboard: (orgId: string, ticketId: string, reason?: string) => api<void>('POST', `/org/${orgId}/tickets/${ticketId}/admission/void`, { ...auth, body: reason ? { reason } : {} }),
+  claim: (orgId: string, id: string, method: PaymentMethod) =>
+    api<{ id: string; amount: number; status: string; phoneMasked: string }>('POST', `/org/${orgId}/departures/${id}/claim`, { ...auth, body: { method } }),
+  leaveStop: (orgId: string, id: string, stopId: string) =>
+    api<{ absent: { ticketId: string; seat: number | null }[] }>('POST', `/org/${orgId}/departures/${id}/stops/${stopId}/leave`, auth),
+};
+
+// ---- From the API to what the screens show ----------------------------------------------------------------------
+
+// Manual names: Hermes' Intl support for fr-FR varies by platform.
+const DAYS = ['Dim.', 'Lun.', 'Mar.', 'Mer.', 'Jeu.', 'Ven.', 'Sam.'];
+const MONTHS = ['janv', 'févr', 'mars', 'avr', 'mai', 'juin', 'juil', 'août', 'sept', 'oct', 'nov', 'déc'];
+const pad = (n: number) => String(n).padStart(2, '0');
+
+/** "Mer. 03 sept" */
+export const dayLabel = (at: number) => {
+  const d = new Date(at);
+  return `${DAYS[d.getDay()]} ${pad(d.getDate())} ${MONTHS[d.getMonth()]}`;
+};
+/** "14h50" */
+export const hourLabel = (at: number) => {
+  const d = new Date(at);
+  return `${pad(d.getHours())}h${pad(d.getMinutes())}`;
+};
+
+export const toStop = (s: StopDto): CaravanStop => {
+  const at = Date.parse(s.at);
+  return { stopId: s.stopId, place: s.place, at, time: hourLabel(at) };
+};
+
+const KINDS: Record<string, CaravanOrganizer['kind']> = { Entreprise: 'Entreprise', Amicale: 'Amicale', Transporteur: 'Transporteur' };
+
+export const toOrganizer = (o: OrgCardDto): CaravanOrganizer => ({
+  id: o.id,
+  name: o.name,
+  kind: KINDS[o.category] ?? 'Entreprise',
+  level: o.level as CaravanOrganizer['level'],
+  rating: o.rating,
+  trips: o.trips,
+});
+
+export function toCaravan(d: DepartureDto): Caravan {
+  const departureAt = Date.parse(d.departureAt);
+  return {
+    id: d.id,
+    code: d.code,
+    status: d.status,
+    organizer: toOrganizer(d.organizer),
+    vehicle: d.vehicle,
+    direction: d.direction,
+    from: d.from,
+    to: d.to,
+    date: dayLabel(departureAt),
+    time: hourLabel(departureAt),
+    pickups: d.pickups.map(toStop),
+    dropoffs: d.dropoffs.map(toStop),
+    departureAt,
+    seats: d.seatsFree,
+    totalSeats: d.totalSeats,
+    booked: d.seatsBooked,
+    minPassengers: d.minPassengers,
+    confirmBy: Date.parse(d.confirmBy),
+    confirmed: d.confirmed,
+    bookingOpen: d.bookingOpen,
+    price: d.price,
+    myTicketId: d.myTicketId ?? null,
+    purchasedHere: !!d.purchasedHere,
+    myBooking: d.myBooking ?? null,
+  };
+}
+
+/** A unique id per scan, so a scan retried after a network error is recorded once. */
+export const newScanId = () => `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`;
