@@ -2,15 +2,24 @@ import { Ionicons } from '@expo/vector-icons';
 import { router, type Href } from 'expo-router';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { caravans, findPrivateResto } from '@/constants/data';
-import { colors, radii, shadow } from '@/constants/theme';
+import { caravans, findPrivateResto, TAXI_LOCK_MIN } from '@/constants/data';
+import { colors, radii, shadow, typo } from '@/constants/theme';
 import { useCart } from '@/context/CartContext';
 import { useLost } from '@/context/LostContext';
+import { orderSteps, useOrders } from '@/context/OrdersContext';
 import { useTaxi } from '@/context/TaxiContext';
 import { useTickets } from '@/context/TicketsContext';
 import { useNow } from '@/lib/useNow';
 
-type Item = { key: string; icon: keyof typeof Ionicons.glyphMap; title: string; detail: string; href: Href };
+type Item = {
+  key: string;
+  icon: keyof typeof Ionicons.glyphMap;
+  title: string;
+  detail: string;
+  href: Href;
+  /** Quick action right in the row (e.g. check in at the taxi meeting point). */
+  action?: { label: string; onPress: () => void };
+};
 
 const hhmm = (at: number) => {
   const d = new Date(at);
@@ -24,12 +33,19 @@ export function InProgress() {
   const taxi = useTaxi();
   const cart = useCart();
   const lost = useLost();
+  const { orders } = useOrders();
 
   const items: Item[] = [];
+  // Food orders first: they move fastest.
+  for (const o of orders) {
+    if (o.status === 'done') continue;
+    const step = orderSteps(o.mode).find((x) => x.key === o.status)!;
+    items.push({ key: o.id, icon: 'receipt-outline', title: `Commande · ${findPrivateResto(o.restoId).resto.name}`, detail: step.title, href: `/commande/${o.id}` });
+  }
   for (const t of tickets) {
     const c = caravans.find((x) => x.id === t.caravanId);
     if (t.status !== 'active' || !c || c.departureAt < now) continue;
-    items.push({ key: t.id, icon: 'ticket-outline', title: `Caravane ${c.from} → ${c.to}`, detail: `${c.date} · ${c.time} · place ${t.seat}`, href: `/billet/${t.id}` });
+    items.push({ key: t.id, icon: 'ticket-outline', title: `Caravane ${c.from} → ${c.to}`, detail: `${c.date} · ${t.pickup.time} · ${t.pickup.place}`, href: `/billet/${t.id}` });
   }
   const trip = taxi.activeTrip();
   if (trip) {
@@ -37,8 +53,17 @@ export function InProgress() {
       key: trip.id,
       icon: 'car-outline',
       title: `Taxi vers ${trip.to.split(' · ').pop()}`,
-      detail: `Départ ${hhmm(trip.departureAt)} · ${trip.passengers.length}/${trip.seats} places`,
-      href: `/trajet/${trip.id}`,
+      detail: (() => {
+        const unread = taxi.unreadFor(trip.id);
+        const base = `Départ ${hhmm(trip.departureAt)} · ${trip.passengers.length}/${trip.seats} places`;
+        return unread ? `${base} · ${unread} nouveau${unread > 1 ? 'x' : ''} message${unread > 1 ? 's' : ''}` : base;
+      })(),
+      href: `/taxi/${trip.id}`,
+      // Seats locked and not checked in yet: one tap from home.
+      action:
+        trip.passengers[0] !== taxi.me && trip.departureAt - now <= TAXI_LOCK_MIN * 60_000 && !trip.checkedIn.includes(taxi.me)
+          ? { label: 'Je suis là', onPress: () => taxi.checkIn(trip.id) }
+          : undefined,
     });
   }
   if (cart.count && cart.restoId) {
@@ -81,7 +106,14 @@ export function InProgress() {
               {it.detail}
             </Text>
           </View>
-          <Ionicons name="chevron-forward" size={16} color={colors.muted} />
+          {it.action ? (
+            <Pressable style={styles.action} onPress={it.action.onPress} hitSlop={6} accessibilityRole="button">
+              <Ionicons name="hand-left-outline" size={14} color="#fff" />
+              <Text style={styles.actionText}>{it.action.label}</Text>
+            </Pressable>
+          ) : (
+            <Ionicons name="chevron-forward" size={16} color={colors.muted} />
+          )}
         </Pressable>
       ))}
     </View>
@@ -92,11 +124,13 @@ const styles = StyleSheet.create({
   card: { backgroundColor: colors.card, borderRadius: radii.lg, paddingHorizontal: 16, paddingVertical: 12 },
   head: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 },
   live: { width: 8, height: 8, borderRadius: 4, backgroundColor: colors.accent },
-  label: { flex: 1, fontSize: 11, fontWeight: '700', color: colors.muted2, letterSpacing: 0.5 },
-  count: { fontSize: 12, fontWeight: '700', color: colors.muted2 },
+  label: { ...typo.label, flex: 1, color: colors.muted2, letterSpacing: 0.5 },
+  count: { ...typo.captionStrong, color: colors.muted2 },
   row: { flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 56 },
   divider: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border },
   icon: { width: 36, height: 36, borderRadius: radii.sm, backgroundColor: colors.primarySoft, alignItems: 'center', justifyContent: 'center' },
-  title: { fontSize: 15, fontWeight: '700', color: colors.navy },
-  detail: { fontSize: 12, color: colors.muted2, marginTop: 1 },
+  title: { ...typo.title, color: colors.navy },
+  detail: { ...typo.caption, color: colors.muted2, marginTop: 1 },
+  action: { flexDirection: 'row', alignItems: 'center', gap: 4, minHeight: 36, paddingHorizontal: 12, borderRadius: radii.pill, backgroundColor: colors.accent },
+  actionText: { ...typo.smallStrong, color: '#fff' },
 });

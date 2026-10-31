@@ -5,8 +5,9 @@ import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { BackButton, FilterChips } from '@/components/ui';
+import { EmptyState } from '@/components/states';
 import { notificationFilters, notifications } from '@/constants/data';
-import { colors, shadow, radii } from '@/constants/theme';
+import { colors, shadow, radii, typo } from '@/constants/theme';
 import { useNotifications } from '@/context/NotificationsContext';
 
 type Filter = (typeof notificationFilters)[number];
@@ -70,7 +71,13 @@ export default function NotificationsScreen() {
             </View>
           );
         })}
-        {list.length === 0 && <Text style={styles.empty}>Aucune notification dans cette catégorie.</Text>}
+        {list.length === 0 && (
+          <EmptyState
+            icon="notifications-outline"
+            title="Rien dans cette catégorie"
+            action={{ label: 'Tout voir', onPress: () => setFilter('Tout') }}
+          />
+        )}
       </ScrollView>
     </SafeAreaView>
   );
@@ -79,18 +86,17 @@ export default function NotificationsScreen() {
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
   head: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 20, paddingTop: 8 },
-  h1: { fontSize: 28, fontWeight: '800', color: colors.navy },
+  h1: { ...typo.h1, color: colors.navy },
   sub: { color: colors.muted2, marginTop: 2 },
   body: { padding: 20, gap: 16, paddingBottom: 32 },
-  group: { fontSize: 11, fontWeight: '700', color: colors.muted2, letterSpacing: 0.5 },
+  group: { ...typo.label, color: colors.muted2, letterSpacing: 0.5 },
   card: { backgroundColor: colors.card, borderRadius: radii.md, padding: 12, flexDirection: 'row', alignItems: 'center', gap: 12 },
   icon: { width: 40, height: 40, borderRadius: radii.sm, alignItems: 'center', justifyContent: 'center' },
-  title: { fontWeight: '700', color: colors.navy, fontSize: 14 },
-  body2: { color: colors.muted2, fontSize: 12, marginTop: 2 },
+  title: { ...typo.bodyStrong, color: colors.navy },
+  body2: { ...typo.caption, color: colors.muted2, marginTop: 2 },
   time: { color: colors.muted2, fontSize: 11, marginTop: 2 },
   side: { alignSelf: 'stretch', alignItems: 'flex-end', gap: 8 },
   newDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: colors.accent },
   // New ones get a light accent border.
   cardNew: { borderWidth: 1, borderColor: colors.accentSoft, backgroundColor: colors.card },
-  empty: { color: colors.muted2, textAlign: 'center', paddingVertical: 24 },
 });

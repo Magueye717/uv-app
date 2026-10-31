@@ -7,7 +7,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Field, OutlineButton, PrimaryButton } from '@/components/ui';
 import { lostCategory, lostOffice, lostSafetyTip } from '@/constants/data';
-import { colors, radii, shadow } from '@/constants/theme';
+import { colors, radii, shadow, typo } from '@/constants/theme';
 import { useLost } from '@/context/LostContext';
 import { openDirections } from '@/lib/maps';
 
@@ -83,11 +83,11 @@ export default function ObjetScreen() {
 
         <View style={styles.body}>
           <View style={[styles.infoCard, shadow.card]}>
-            <Info icon="location" label={found ? 'Trouvé à' : 'Perdu à'} value={item.spot ? `${item.where} · ${item.spot}` : item.where} />
+            <Info icon="location-outline" label={found ? 'Trouvé à' : 'Perdu à'} value={item.spot ? `${item.where} · ${item.spot}` : item.where} />
             <View style={styles.divider} />
-            <Info icon="time" label="Quand" value={item.when} />
+            <Info icon="time-outline" label="Quand" value={item.when} />
             <View style={styles.divider} />
-            <Info icon="person" label={found ? 'Trouvé par' : 'Perdu par'} value={item.mine ? `Toi (${item.by})` : item.by} />
+            <Info icon="person-outline" label={found ? 'Trouvé par' : 'Perdu par'} value={item.mine ? `Toi (${item.by})` : item.by} />
           </View>
 
           {item.returned ? (
@@ -102,13 +102,13 @@ export default function ObjetScreen() {
                   <Text style={styles.section}>Où le récupérer ?</Text>
                   {item.holder === 'office' ? (
                     <View style={[styles.infoCard, shadow.card]}>
-                      <Info icon="business" label={lostOffice.name} value={`${lostOffice.area} · ${lostOffice.hours}`} />
+                      <Info icon="business-outline" label={lostOffice.name} value={`${lostOffice.area} · ${lostOffice.hours}`} />
                       <Text style={styles.hint}>Présente-toi avec ta carte étudiant ou une pièce d’identité.</Text>
                       <OutlineButton label="Itinéraire vers le bureau" onPress={() => openDirections(lostOffice.coords, lostOffice.name)} />
                     </View>
                   ) : (
                     <View style={[styles.infoCard, shadow.card]}>
-                      <Info icon="hand-left" label={item.mine ? 'Tu le gardes' : `Chez ${item.by}`} value="Rendez-vous à convenir dans l’app" />
+                      <Info icon="hand-left-outline" label={item.mine ? 'Tu le gardes' : `Chez ${item.by}`} value="Rendez-vous à convenir dans l’app" />
                       <View style={styles.tip}>
                         <Ionicons name="shield-checkmark-outline" size={14} color={colors.muted2} />
                         <Text style={styles.tipText}>{lostSafetyTip}</Text>
@@ -227,7 +227,7 @@ const styles = StyleSheet.create({
   muted: { color: colors.muted2 },
   hero: { height: 260 },
   noPhoto: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 8 },
-  noPhotoText: { fontSize: 12, fontWeight: '700', color: colors.muted2 },
+  noPhotoText: { ...typo.captionStrong, color: colors.muted2 },
   back: {
     position: 'absolute',
     left: 20,
@@ -242,25 +242,25 @@ const styles = StyleSheet.create({
   card: { marginTop: -28, marginHorizontal: 20, backgroundColor: colors.card, borderRadius: radii.lg, padding: 16, gap: 6 },
   pills: { flexDirection: 'row', gap: 6 },
   pill: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 9, paddingVertical: 3, borderRadius: radii.pill },
-  pillText: { fontSize: 12, fontWeight: '700' },
-  name: { fontSize: 22, fontWeight: '800', color: colors.navy, marginTop: 4 },
-  details: { fontSize: 14, color: colors.muted2, lineHeight: 20 },
-  owner: { fontSize: 13, fontWeight: '700', color: colors.successText },
+  pillText: { ...typo.captionStrong },
+  name: { ...typo.h2, color: colors.navy, marginTop: 4 },
+  details: { ...typo.body, color: colors.muted2, lineHeight: 20 },
+  owner: { ...typo.smallStrong, color: colors.successText },
   body: { paddingHorizontal: 20, marginTop: 16, gap: 12 },
-  section: { fontSize: 16, fontWeight: '700', color: colors.navy, marginTop: 4 },
+  section: { ...typo.title, color: colors.navy, marginTop: 4 },
   infoCard: { backgroundColor: colors.card, borderRadius: radii.lg, padding: 14, gap: 12 },
   info: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   infoIcon: { width: 36, height: 36, borderRadius: 18, backgroundColor: colors.primarySoft, alignItems: 'center', justifyContent: 'center' },
-  infoLabel: { fontSize: 12, color: colors.muted2 },
-  infoValue: { fontSize: 14, fontWeight: '700', color: colors.navy, marginTop: 1 },
+  infoLabel: { ...typo.caption, color: colors.muted2 },
+  infoValue: { ...typo.bodyStrong, color: colors.navy, marginTop: 1 },
   divider: { height: StyleSheet.hairlineWidth, backgroundColor: colors.border },
-  hint: { fontSize: 13, color: colors.muted2 },
+  hint: { ...typo.small, color: colors.muted2 },
   tip: { flexDirection: 'row', alignItems: 'flex-start', gap: 6 },
-  tipText: { flex: 1, fontSize: 12, color: colors.muted2, lineHeight: 17 },
+  tipText: { ...typo.caption, flex: 1, color: colors.muted2, lineHeight: 17 },
   notice: { flexDirection: 'row', alignItems: 'center', gap: 8, padding: 14, borderRadius: radii.md },
-  noticeText: { flex: 1, fontSize: 14, fontWeight: '700' },
+  noticeText: { ...typo.bodyStrong, flex: 1 },
   backdrop: { flex: 1, backgroundColor: 'rgba(15,27,76,0.35)' },
   sheet: { backgroundColor: colors.card, borderTopLeftRadius: radii.xl, borderTopRightRadius: radii.xl, padding: 20, paddingBottom: 36, gap: 14 },
-  sheetTitle: { fontSize: 18, fontWeight: '800', color: colors.navy },
-  sheetText: { fontSize: 13, color: colors.muted2, lineHeight: 18 },
+  sheetTitle: { ...typo.h3, color: colors.navy },
+  sheetText: { ...typo.small, color: colors.muted2, lineHeight: 18 },
 });

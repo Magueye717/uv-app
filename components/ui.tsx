@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
-import { useState, type ReactNode } from 'react';
+import { useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import {
   ActivityIndicator,
   ScrollView,
@@ -14,10 +14,11 @@ import {
   type ViewStyle,
 } from 'react-native';
 
-import Animated, { FadeInDown, interpolateColor, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
+import Animated, { FadeInDown, interpolateColor, useAnimatedStyle, useSharedValue, withSpring, withTiming } from 'react-native-reanimated';
 
-import { colors, radii } from '@/constants/theme';
+import { colors, motion, radii, typo } from '@/constants/theme';
 import { bellLabel, useNotifications } from '@/context/NotificationsContext';
+import { haptics } from '@/lib/haptics';
 
 export function PrimaryButton({
   label,
@@ -130,7 +131,11 @@ export function Field({
         {...props}
       />
       {secure ? (
-        <Pressable onPress={() => setHidden((h) => !h)} hitSlop={8} accessibilityLabel="Afficher le mot de passe">
+        <Pressable
+          onPress={() => setHidden((h) => !h)}
+          hitSlop={8}
+          accessibilityRole="button"
+          accessibilityLabel={hidden ? 'Afficher le mot de passe' : 'Masquer le mot de passe'}>
           <Ionicons name={hidden ? 'eye-outline' : 'eye-off-outline'} size={20} color={colors.muted} />
         </Pressable>
       ) : null}
@@ -163,7 +168,7 @@ export function LabeledField({
 
 export function BackButton({ onPress }: { onPress: () => void }) {
   return (
-    <Pressable onPress={onPress} style={styles.back}>
+    <Pressable onPress={onPress} style={styles.back} accessibilityRole="button" accessibilityLabel="Retour">
       <Ionicons name="arrow-back" size={20} color={colors.navy} />
     </Pressable>
   );
@@ -223,13 +228,39 @@ export function Segmented<T extends string>({
   value: T | null;
   onChange: (v: T) => void;
 }) {
+  // One pill slides under the labels: you see where the selection went, not just that it changed.
+  const [width, setWidth] = useState(0);
+  const index = options.findIndex((o) => o.value === value);
+  const segW = width / options.length;
+  const x = useSharedValue(0);
+  const placed = useRef(false);
+  useLayoutEffect(() => {
+    if (!segW || index < 0) return;
+    // First layout: put it in place, no slide in from the left edge.
+    x.set(placed.current ? withSpring(index * segW, motion.glide) : index * segW);
+    placed.current = true;
+  }, [index, segW, x]);
+  const pill = useAnimatedStyle(() => ({ transform: [{ translateX: x.get() }] }));
+
   return (
-    <View style={styles.segment}>
+    <View style={styles.segment} onLayout={(e) => setWidth(e.nativeEvent.layout.width - 8)}>
+      {width > 0 && index >= 0 && <Animated.View style={[styles.segPill, { width: segW }, pill]} />}
       {options.map((o) => {
         const on = o.value === value;
         return (
-          <Pressable key={o.value} onPress={() => onChange(o.value)} style={[styles.segBtn, on && styles.segOn]}>
-            <Text style={[styles.segText, on && styles.segTextOn]}>{o.label}</Text>
+          <Pressable
+            key={o.value}
+            onPress={() => {
+              if (on) return;
+              haptics.select();
+              onChange(o.value);
+            }}
+            style={styles.segBtn}
+            accessibilityRole="tab"
+            accessibilityState={{ selected: on }}>
+            <Text style={[styles.segText, on && styles.segTextOn]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.85}>
+              {o.label}
+            </Text>
           </Pressable>
         );
       })}
@@ -264,14 +295,14 @@ const styles = StyleSheet.create({
   // Main buttons: same 16 px corners everywhere (welcome, sign-up, checkout).
   primary: {
     backgroundColor: colors.accent,
-    height: 54,
+    minHeight: 54,
     borderRadius: radii.md,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  primaryLabel: { color: '#fff', fontSize: 16, fontWeight: '700' },
+  primaryLabel: { ...typo.title, color: '#fff' },
   accent: {
-    height: 56,
+    minHeight: 56,
     borderRadius: radii.md,
     backgroundColor: colors.accent,
     shadowColor: colors.accent,
@@ -281,7 +312,7 @@ const styles = StyleSheet.create({
     elevation: 5,
   },
   outline: {
-    height: 54,
+    minHeight: 54,
     borderRadius: radii.md,
     alignItems: 'center',
     justifyContent: 'center',
@@ -289,7 +320,7 @@ const styles = StyleSheet.create({
     borderColor: colors.primary,
     backgroundColor: colors.card,
   },
-  outlineLabel: { color: colors.primary, fontSize: 16, fontWeight: '700' },
+  outlineLabel: { ...typo.title, color: colors.primary },
   pressed: { opacity: 0.86 },
   disabled: { opacity: 0.45 },
   field: {
@@ -305,10 +336,10 @@ const styles = StyleSheet.create({
   fieldInvalid: { borderColor: colors.danger, borderWidth: 1.5 },
   fieldIcon: { marginRight: 10 },
   prefix: { paddingRight: 10, marginRight: 10, borderRightWidth: 1, borderRightColor: colors.border },
-  prefixText: { fontSize: 15, fontWeight: '600', color: colors.text },
-  error: { fontSize: 12, color: colors.danger },
-  input: { flex: 1, fontSize: 15, color: colors.text, paddingVertical: 14 },
-  label: { fontSize: 14, fontWeight: '700', color: colors.navy },
+  prefixText: { fontSize: 14, fontWeight: '600', color: colors.text },
+  error: { ...typo.caption, color: colors.danger },
+  input: { ...typo.body, flex: 1, color: colors.text, paddingVertical: 14 },
+  label: { ...typo.bodyStrong, color: colors.navy },
   back: {
     width: 44,
     height: 44,
@@ -339,17 +370,17 @@ const styles = StyleSheet.create({
   chip: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: radii.pill },
   chipText: { fontSize: 12, fontWeight: '600' },
   screenHead: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 20, paddingTop: 8 },
-  screenTitle: { fontSize: 28, fontWeight: '800', color: colors.navy },
+  screenTitle: { ...typo.h1, color: colors.navy },
   screenSub: { color: colors.muted2, marginTop: 2 },
   segment: { backgroundColor: colors.primarySoft, borderRadius: radii.pill, flexDirection: 'row', padding: 4 },
-  segBtn: { flex: 1, height: 40, borderRadius: radii.pill, alignItems: 'center', justifyContent: 'center' },
-  segOn: { backgroundColor: colors.primary },
+  segBtn: { flex: 1, minHeight: 40, borderRadius: radii.pill, alignItems: 'center', justifyContent: 'center' },
+  segPill: { position: 'absolute', top: 4, bottom: 4, left: 4, borderRadius: radii.pill, backgroundColor: colors.primary },
   segText: { fontWeight: '700', color: colors.muted2 },
   segTextOn: { color: '#fff' },
   filters: { gap: 8, paddingHorizontal: 20 },
   filter: {
     paddingHorizontal: 14,
-    height: 40,
+    minHeight: 40,
     borderRadius: radii.pill,
     backgroundColor: colors.card,
     borderWidth: 1,

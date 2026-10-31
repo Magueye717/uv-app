@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Animated, Platform, StyleSheet, TextInput, View, type TextInputInstance } from 'react-native';
 
-import { colors, radii } from '@/constants/theme';
+import { colors, radii, typo } from '@/constants/theme';
 
 type Props = {
   digits: string[];
@@ -103,5 +103,5 @@ const styles = StyleSheet.create({
   },
   boxFilled: { borderColor: colors.orange },
   boxInvalid: { borderColor: colors.danger },
-  input: { flex: 1, textAlign: 'center', fontSize: 26, fontWeight: '800', color: colors.text },
+  input: { ...typo.h1, flex: 1, textAlign: 'center', color: colors.text },
 });

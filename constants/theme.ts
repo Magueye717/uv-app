@@ -1,4 +1,6 @@
 // Palette of the welcome screen: navy + orange on white.
+import type { TextStyle } from 'react-native';
+
 export const colors = {
   /** Headers, selected states, links and icons. */
   primary: '#0F1B4C',
@@ -69,3 +71,41 @@ export const shadow = {
     elevation: 6,
   },
 };
+
+/**
+ * Icons (Ionicons): outline by default; the filled version only for an active or selected state
+ * (current tab, chosen campus, picked stop) and for status marks (✓, ✕, star, destination pin).
+ */
+
+/**
+ * Text scale: 11 · 12 · 13 · 14 · 16 · 18 · 22 · 28 · 30. Regular for reading, Bold for emphasis,
+ * ExtraBold only for titles (18 and up). Spread into styles: `title: { ...typo.title, color: colors.navy }`.
+ */
+export const typo = {
+  label: { fontSize: 11, fontWeight: '700' },
+  caption: { fontSize: 12, fontWeight: '400' },
+  captionStrong: { fontSize: 12, fontWeight: '700' },
+  small: { fontSize: 13, fontWeight: '400' },
+  smallStrong: { fontSize: 13, fontWeight: '700' },
+  body: { fontSize: 14, fontWeight: '400' },
+  bodyStrong: { fontSize: 14, fontWeight: '700' },
+  title: { fontSize: 16, fontWeight: '700' },
+  h3: { fontSize: 18, fontWeight: '800' },
+  h2: { fontSize: 22, fontWeight: '800' },
+  h1: { fontSize: 28, fontWeight: '800' },
+  display: { fontSize: 30, fontWeight: '800' },
+} satisfies Record<string, TextStyle>;
+
+/**
+ * Motion: short, and only to give feedback or show where things come from. Animate transform and opacity
+ * (cheap on entry-level Android). Reanimated follows the system "reduce motion" setting by default.
+ */
+export const motion = {
+  fast: 150,
+  base: 250,
+  slow: 400,
+  /** For things that pop in (badges, check marks, verdicts): quick, a hint of bounce. */
+  spring: { damping: 14, stiffness: 220, mass: 0.8 },
+  /** For things that slide into place (indicators, sheets): no bounce. */
+  glide: { damping: 22, stiffness: 240 },
+} as const;

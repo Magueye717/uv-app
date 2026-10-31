@@ -6,7 +6,7 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { Field, Segmented, StatusChip } from '@/components/ui';
 import { lostCategory, type LostItem, type LostStatus } from '@/constants/data';
-import { colors, radii, shadow } from '@/constants/theme';
+import { colors, radii, shadow, typo } from '@/constants/theme';
 import { useLost } from '@/context/LostContext';
 import { matches } from '@/lib/search';
 
@@ -174,8 +174,8 @@ const styles = StyleSheet.create({
   body: { padding: 20, gap: 14, paddingBottom: 32 },
   banner: { backgroundColor: colors.accent, borderRadius: radii.lg, padding: 16 },
   bannerActions: { flexDirection: 'row', gap: 8, marginTop: 12 },
-  bannerTitle: { color: '#fff', fontWeight: '700', fontSize: 15 },
-  bannerSub: { color: 'rgba(255,255,255,0.9)', fontSize: 12, marginTop: 2 },
+  bannerTitle: { ...typo.title, color: '#fff' },
+  bannerSub: { ...typo.caption, color: 'rgba(255,255,255,0.9)', marginTop: 2 },
   declare: {
     flex: 1,
     justifyContent: 'center',
@@ -184,25 +184,25 @@ const styles = StyleSheet.create({
     gap: 4,
     backgroundColor: '#fff',
     paddingHorizontal: 12,
-    height: 34,
+    minHeight: 34,
     borderRadius: radii.pill,
   },
-  declareText: { color: colors.accent, fontWeight: '700', fontSize: 13 },
+  declareText: { ...typo.smallStrong, color: colors.accent },
   grid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', rowGap: 12 },
   card: { width: '48%', backgroundColor: colors.card, borderRadius: radii.lg, padding: 10, gap: 6, alignItems: 'flex-start' },
   visual: { alignSelf: 'stretch', height: 92, borderRadius: radii.md, overflow: 'hidden', alignItems: 'center', justifyContent: 'center' },
   private: { position: 'absolute', bottom: 6, flexDirection: 'row', alignItems: 'center', gap: 3, paddingHorizontal: 6, paddingVertical: 2, borderRadius: radii.pill, backgroundColor: colors.card },
-  privateText: { fontSize: 10, fontWeight: '700', color: colors.muted2 },
-  owner: { fontSize: 12, fontWeight: '700', color: colors.successText },
+  privateText: { ...typo.label, color: colors.muted2 },
+  owner: { ...typo.captionStrong, color: colors.successText },
   scan: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: colors.card, borderRadius: radii.md, padding: 14 },
   scanIcon: { width: 42, height: 42, borderRadius: radii.sm, backgroundColor: colors.primarySoft, alignItems: 'center', justifyContent: 'center' },
-  scanTitle: { fontSize: 15, fontWeight: '700', color: colors.navy },
-  scanText: { fontSize: 12, color: colors.muted2, marginTop: 2 },
-  name: { fontWeight: '700', color: colors.navy, fontSize: 14, marginTop: 2 },
+  scanTitle: { ...typo.title, color: colors.navy },
+  scanText: { ...typo.caption, color: colors.muted2, marginTop: 2 },
+  name: { ...typo.bodyStrong, color: colors.navy, marginTop: 2 },
   where: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  whereText: { fontSize: 12, color: colors.muted2 },
+  whereText: { ...typo.caption, color: colors.muted2 },
   emptyBox: { alignItems: 'center', gap: 10, paddingVertical: 20 },
   empty: { color: colors.muted2, textAlign: 'center' },
   elsewhere: { color: colors.primary, fontWeight: '700' },
-  results: { fontSize: 13, fontWeight: '700', color: colors.muted2 },
+  results: { ...typo.smallStrong, color: colors.muted2 },
 });

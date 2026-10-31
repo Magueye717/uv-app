@@ -2,7 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
-import { colors, radii, shadow } from '@/constants/theme';
+import { colors, radii, shadow, typo } from '@/constants/theme';
 
 /** Grants: next payment and a reminder. Detailed tracking comes with the backend. */
 export function BoursesBoard() {
@@ -39,9 +39,9 @@ const styles = StyleSheet.create({
   body: { padding: 20, gap: 14, paddingBottom: 32 },
   card: { backgroundColor: colors.card, borderRadius: radii.lg, padding: 20, gap: 4 },
   icon: { width: 44, height: 44, borderRadius: radii.sm, backgroundColor: colors.successBg, alignItems: 'center', justifyContent: 'center', marginBottom: 8 },
-  label: { fontSize: 12, fontWeight: '700', color: colors.muted2, textTransform: 'uppercase', letterSpacing: 0.5 },
-  date: { fontSize: 22, fontWeight: '800', color: colors.navy },
-  detail: { fontSize: 14, color: colors.muted2 },
+  label: { ...typo.captionStrong, color: colors.muted2, textTransform: 'uppercase', letterSpacing: 0.5 },
+  date: { ...typo.h2, color: colors.navy },
+  detail: { ...typo.body, color: colors.muted2 },
   remind: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -53,7 +53,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primarySoft,
   },
   remindOn: { backgroundColor: colors.successBg },
-  remindText: { flex: 1, fontSize: 14, fontWeight: '700', color: colors.primary },
+  remindText: { ...typo.bodyStrong, flex: 1, color: colors.primary },
   info: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 4 },
-  infoText: { flex: 1, fontSize: 13, color: colors.muted2 },
+  infoText: { ...typo.small, flex: 1, color: colors.muted2 },
 });

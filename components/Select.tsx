@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { colors, radii } from '@/constants/theme';
+import { colors, radii, typo } from '@/constants/theme';
 
 type Props = {
   icon: keyof typeof Ionicons.glyphMap;
@@ -86,7 +86,7 @@ const styles = StyleSheet.create({
   },
   fieldInvalid: { borderColor: colors.danger, borderWidth: 1.5 },
   disabled: { opacity: 0.6 },
-  value: { flex: 1, fontSize: 15, color: colors.text },
+  value: { ...typo.body, flex: 1, color: colors.text },
   backdrop: { flex: 1, backgroundColor: 'rgba(15,27,76,0.4)' },
   sheet: {
     backgroundColor: colors.card,
@@ -97,7 +97,7 @@ const styles = StyleSheet.create({
     paddingBottom: 12,
   },
   handle: { alignSelf: 'center', width: 40, height: 4, borderRadius: 2, backgroundColor: colors.border, marginBottom: 14 },
-  title: { fontSize: 17, fontWeight: '700', color: colors.navy, marginBottom: 8 },
+  title: { ...typo.title, color: colors.navy, marginBottom: 8 },
   option: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -106,5 +106,5 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     borderRadius: radii.sm,
   },
-  optionText: { fontSize: 15, color: colors.text },
+  optionText: { ...typo.body, color: colors.text },
 });

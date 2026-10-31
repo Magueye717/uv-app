@@ -8,7 +8,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { BackButton, Field, PrimaryButton } from '@/components/ui';
 import { lostCategories, lostCategory, lostOffice, lostPlaces, lostSafetyTip, type LostStatus } from '@/constants/data';
-import { colors, radii, shadow } from '@/constants/theme';
+import { colors, radii, shadow, typo } from '@/constants/theme';
 import { useLost } from '@/context/LostContext';
 
 const WHEN = ['Aujourd’hui', 'Hier', 'Cette semaine'];
@@ -338,20 +338,20 @@ function Choice({
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
   head: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingTop: 8 },
-  h1: { fontSize: 18, fontWeight: '800', color: colors.navy },
+  h1: { ...typo.h3, color: colors.navy },
   body: { padding: 20, gap: 14, paddingBottom: 40 },
   intro: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 14, borderRadius: radii.md },
   introText: { flex: 1, fontSize: 13, fontWeight: '600', lineHeight: 18 },
   card: { backgroundColor: colors.card, borderRadius: radii.lg, padding: 14 },
   row: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  cardTitle: { fontSize: 15, fontWeight: '700', color: colors.navy },
-  muted: { fontSize: 12, color: colors.muted2, lineHeight: 17 },
+  cardTitle: { ...typo.title, color: colors.navy },
+  muted: { ...typo.caption, color: colors.muted2, lineHeight: 17 },
   stepHead: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   stepNum: { width: 26, height: 26, borderRadius: 13, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center' },
-  stepNumText: { color: '#fff', fontWeight: '700', fontSize: 13 },
-  stepTitle: { flex: 1, fontSize: 16, fontWeight: '700', color: colors.navy },
+  stepNumText: { ...typo.smallStrong, color: '#fff' },
+  stepTitle: { ...typo.title, flex: 1, color: colors.navy },
   badge: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: radii.pill, backgroundColor: colors.bg },
-  badgeText: { fontSize: 11, fontWeight: '700', color: colors.muted2 },
+  badgeText: { ...typo.label, color: colors.muted2 },
   // 3 tiles per row.
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   tile: {
@@ -366,10 +366,10 @@ const styles = StyleSheet.create({
     borderColor: 'transparent',
   },
   tileOn: { backgroundColor: colors.primary, borderColor: colors.primary },
-  tileText: { fontSize: 12, fontWeight: '700', color: colors.navy },
+  tileText: { ...typo.captionStrong, color: colors.navy },
   note: { flexDirection: 'row', gap: 10, padding: 14, borderRadius: radii.md },
-  noteText: { flex: 1, fontSize: 13, lineHeight: 18 },
-  label: { fontSize: 13, fontWeight: '700', color: colors.navy },
+  noteText: { ...typo.small, flex: 1, lineHeight: 18 },
+  label: { ...typo.smallStrong, color: colors.navy },
   photoRow: { flexDirection: 'row', gap: 10 },
   photoBtn: {
     flex: 1,
@@ -383,17 +383,17 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 6,
   },
-  photoBtnText: { fontSize: 13, fontWeight: '700', color: colors.primary },
+  photoBtnText: { ...typo.smallStrong, color: colors.primary },
   preview: { height: 200, borderRadius: radii.md },
   remove: { position: 'absolute', top: 8, right: 8, width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(15,27,76,0.6)', alignItems: 'center', justifyContent: 'center' },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  chip: { paddingHorizontal: 14, height: 40, borderRadius: radii.pill, backgroundColor: colors.bg, justifyContent: 'center' },
+  chip: { paddingHorizontal: 14, minHeight: 40, borderRadius: radii.pill, backgroundColor: colors.bg, justifyContent: 'center' },
   chipOn: { backgroundColor: colors.primary },
   chipText: { fontWeight: '600', color: colors.navy },
   choice: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: colors.bg, borderRadius: radii.md, padding: 14, borderWidth: 1.5, borderColor: 'transparent' },
   choiceOn: { borderColor: colors.primary, backgroundColor: colors.primarySofter },
-  choiceTitle: { fontSize: 14, fontWeight: '700', color: colors.navy },
+  choiceTitle: { ...typo.bodyStrong, color: colors.navy },
   radio: { width: 22, height: 22, borderRadius: 11, borderWidth: 2, borderColor: colors.border },
-  previewLabel: { fontSize: 13, fontWeight: '700', color: colors.muted2, marginTop: 4 },
+  previewLabel: { ...typo.smallStrong, color: colors.muted2, marginTop: 4 },
   thumb: { width: 56, height: 56, borderRadius: radii.sm, overflow: 'hidden', alignItems: 'center', justifyContent: 'center' },
 });

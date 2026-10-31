@@ -6,7 +6,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ScreenHeader, StatusChip } from '@/components/ui';
 import { schedule, weekDays } from '@/constants/data';
-import { colors, radii, shadow } from '@/constants/theme';
+import { colors, radii, shadow, typo } from '@/constants/theme';
 
 const TODAY = weekDays[0].id;
 
@@ -103,8 +103,8 @@ const styles = StyleSheet.create({
   week: { flexDirection: 'row', justifyContent: 'space-between' },
   day: { width: 50, paddingVertical: 8, borderRadius: radii.md, alignItems: 'center', gap: 2, backgroundColor: colors.card },
   dayOn: { backgroundColor: colors.primary },
-  dayShort: { fontSize: 10, fontWeight: '700', color: colors.muted2 },
-  dayNum: { fontSize: 17, fontWeight: '700', color: colors.navy },
+  dayShort: { ...typo.label, color: colors.muted2 },
+  dayNum: { ...typo.title, color: colors.navy },
   dayTextOn: { color: '#fff' },
   alert: {
     flexDirection: 'row',
@@ -122,16 +122,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  alertTitle: { fontWeight: '700', color: colors.navy, fontSize: 14 },
-  alertSub: { fontSize: 12, color: colors.muted2, marginTop: 2 },
+  alertTitle: { ...typo.bodyStrong, color: colors.navy },
+  alertSub: { ...typo.caption, color: colors.muted2, marginTop: 2 },
   sectionRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 4 },
-  section: { fontSize: 18, fontWeight: '800', color: colors.navy },
-  link: { color: colors.primary, fontWeight: '700', fontSize: 13 },
+  section: { ...typo.h3, color: colors.navy },
+  link: { ...typo.smallStrong, color: colors.primary },
   empty: { color: colors.muted2, textAlign: 'center', paddingVertical: 24 },
   slot: { flexDirection: 'row', gap: 12, alignItems: 'stretch' },
   time: { width: 46, paddingTop: 12 },
-  start: { fontWeight: '700', color: colors.navy, fontSize: 14 },
-  end: { color: colors.muted2, fontSize: 12 },
+  start: { ...typo.bodyStrong, color: colors.navy },
+  end: { ...typo.caption, color: colors.muted2 },
   course: {
     flex: 1,
     backgroundColor: colors.card,
@@ -144,10 +144,10 @@ const styles = StyleSheet.create({
     borderLeftColor: colors.primary,
   },
   courseMoved: { borderLeftColor: colors.orange },
-  courseTitle: { fontWeight: '700', color: colors.navy, fontSize: 15 },
-  muted: { color: colors.muted2, fontSize: 12, marginTop: 2 },
+  courseTitle: { ...typo.title, color: colors.navy },
+  muted: { ...typo.caption, color: colors.muted2, marginTop: 2 },
   kind: { backgroundColor: colors.primarySoft, paddingHorizontal: 10, paddingVertical: 4, borderRadius: radii.pill },
-  kindText: { color: colors.primary, fontSize: 12, fontWeight: '700' },
+  kindText: { ...typo.captionStrong, color: colors.primary },
   inscription: {
     backgroundColor: colors.card,
     borderRadius: radii.lg,

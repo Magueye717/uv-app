@@ -1,18 +1,22 @@
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { Alert, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import Animated, { LayoutAnimationConfig } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Field, LabeledField, PrimaryButton } from '@/components/ui';
+import { EmptyState } from '@/components/states';
+import { PopOnChange, popIn } from '@/components/motion';
 import { formatFcfa, TAXI_CHAT_HOURS, TAXI_LOCK_MIN, TAXI_STRIKES_LIMIT, taxiSeatPrice, type TaxiTrip } from '@/constants/data';
-import { colors, radii, shadow } from '@/constants/theme';
+import { colors, radii, shadow, typo } from '@/constants/theme';
 import { useTaxi } from '@/context/TaxiContext';
+import { useTaxiActions } from '@/features/taxi/useTaxiActions';
 
 const LEAVE_IN = [15, 30, 60, 120]; // minutes
 const SEAT_OPTIONS = [2, 3, 4];
 
-function useNow() {
+export function useNow() {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     const t = setInterval(() => setNow(Date.now()), 30_000);
@@ -21,7 +25,7 @@ function useNow() {
   return now;
 }
 
-function formatDeparture(at: number, now: number) {
+export function formatDeparture(at: number, now: number) {
   const mins = Math.round((at - now) / 60_000);
   if (mins <= 0) return 'Départ imminent';
   if (mins < 60) return `Dans ${mins} min`;
@@ -52,82 +56,7 @@ export function SunuTaxiBoard() {
     )
     .sort((a, b) => a.departureAt - b.departureAt);
 
-  const join = (t: TaxiTrip) => {
-    const price = formatFcfa(taxiSeatPrice(t));
-    const pay = (method: string) => {
-      taxi.join(t.id);
-      Alert.alert('Place réservée', `Valide ${price} sur ${method}. Remboursé si tu quittes plus de ${TAXI_LOCK_MIN} min avant le départ.`);
-    };
-    Alert.alert(`Payer ta place · ${price}`, `Ton argent est bloqué jusqu’au départ. Places verrouillées ${TAXI_LOCK_MIN} min avant.`, [
-      { text: 'Annuler', style: 'cancel' },
-      { text: 'Wave', onPress: () => pay('Wave') },
-      { text: 'Orange Money', onPress: () => pay('Orange Money') },
-    ]);
-  };
-
-  const leave = (t: TaxiTrip, locked: boolean) =>
-    Alert.alert(
-      'Quitter le trajet ?',
-      locked
-        ? `Moins de ${TAXI_LOCK_MIN} min avant le départ : ta place (${formatFcfa(taxiSeatPrice(t))}) n’est pas remboursée, elle sert à payer le taxi.`
-        : `Tu es remboursé de ${formatFcfa(taxiSeatPrice(t))}.`,
-      [
-        { text: 'Rester', style: 'cancel' },
-        {
-          text: 'Quitter',
-          style: 'destructive',
-          onPress: () => taxi.leave(t.id),
-        },
-      ],
-    );
-
-  const cancel = (t: TaxiTrip, locked: boolean) => {
-    const others = t.passengers.length - 1;
-    if (others === 0) {
-      Alert.alert('Annuler le trajet ?', 'Personne ne t’a encore rejoint.', [
-        { text: 'Garder le trajet', style: 'cancel' },
-        { text: 'Annuler le trajet', style: 'destructive', onPress: () => taxi.cancel(t.id, false) },
-      ]);
-      return;
-    }
-    // Students are counting on this trip: handing it over comes first, so nobody is left without a taxi.
-    const next = taxi.nameOf(t.passengers[1]);
-    const late = locked;
-    Alert.alert(
-      'Tu ne peux plus partir ?',
-      `Passe le relais : ${next}, premier inscrit, organise le trajet à ta place. Pas de pénalité.\n\n` +
-        `Ou annule : les ${others} étudiant${others > 1 ? 's' : ''} inscrit${others > 1 ? 's' : ''} ${others > 1 ? 'sont remboursés' : 'est remboursé'} à 100 %.` +
-        (late ? ` Annulation tardive : ${strikes + 1}/${TAXI_STRIKES_LIMIT}. À ${TAXI_STRIKES_LIMIT}, Sunu Taxi est suspendu 7 jours.` : ''),
-      [
-        { text: 'Garder le trajet', style: 'cancel' },
-        { text: `Passer le relais à ${next}`, onPress: () => taxi.handOver(t.id) },
-        { text: 'Annuler le trajet', style: 'destructive', onPress: () => taxi.cancel(t.id, late) },
-      ],
-    );
-  };
-
-  // One trip at a time, organized or joined: no seats held "just in case" in two taxis.
-  const current = taxi.activeTrip();
-  const busy = () =>
-    Alert.alert(
-      'Tu as déjà un trajet',
-      `Tu es inscrit sur ${current?.from.split(' · ').pop()} → ${current?.to.split(' · ').pop()}. Quitte-le ou attends le départ pour en proposer ou en rejoindre un autre.`,
-    );
-
-
-  const depart = (t: TaxiTrip) => {
-    const paid = (t.passengers.length - 1) * taxiSeatPrice(t);
-    const missing = t.passengers.filter((p) => !t.checkedIn.includes(p) && p !== me).length;
-    Alert.alert(
-      'Vous êtes partis ?',
-      `${formatFcfa(paid)} versés sur ton compte pour payer le taxi.` +
-        (missing ? `\n${missing} absent${missing > 1 ? 's' : ''} : ${missing > 1 ? 'leurs places restent payées' : 'sa place reste payée'}.` : ''),
-      [
-        { text: 'Pas encore', style: 'cancel' },
-        { text: 'On est partis', onPress: () => taxi.depart(t.id) },
-      ],
-    );
-  };
+  const { join, leave, cancel, busy, depart, current } = useTaxiActions();
 
   return (
     <>
@@ -165,7 +94,14 @@ export function SunuTaxiBoard() {
         )}
 
         <Text style={styles.section}>Trajets ouverts</Text>
-        {upcoming.length === 0 && <Text style={styles.empty}>Aucun trajet pour le moment. Propose le premier !</Text>}
+        {upcoming.length === 0 && (
+          <EmptyState
+            icon="car-outline"
+            title="Aucun trajet pour le moment"
+            text="Propose le premier : d’autres étudiants te rejoindront."
+            action={suspended ? undefined : { label: 'Proposer un trajet', onPress: () => setCreating(true) }}
+          />
+        )}
 
         {upcoming.map((t) => (
           <TripCard
@@ -181,8 +117,10 @@ export function SunuTaxiBoard() {
             onCancel={(locked) => cancel(t, locked)}
             onCheckIn={() => taxi.checkIn(t.id)}
             onDepart={() => depart(t)}
-            messageCount={taxi.messages.filter((m) => m.tripId === t.id && m.author && m.author !== me).length}
+            messageCount={taxi.unreadFor(t.id)}
             onChat={() => router.push(`/trajet/${t.id}`)}
+            compact
+            onOpen={() => router.push(`/taxi/${t.id}`)}
           />
         ))}
       </ScrollView>
@@ -199,8 +137,11 @@ export function SunuTaxiBoard() {
   );
 }
 
-function TripCard({
+/** A trip: compact in the list (tap to open), complete with every action on the trip screen. */
+export function TripCard({
   trip: t,
+  compact,
+  onOpen,
   me,
   now,
   suspended,
@@ -228,6 +169,8 @@ function TripCard({
   onDepart: () => void;
   messageCount: number;
   onChat: () => void;
+  compact?: boolean;
+  onOpen?: () => void;
 }) {
   const isOrganizer = t.passengers[0] === me;
   const isIn = t.passengers.includes(me);
@@ -239,7 +182,12 @@ function TripCard({
   const { trips, lateCancels } = t.organizer;
 
   return (
-    <View style={[styles.card, shadow.card]}>
+    <Pressable
+      disabled={!compact}
+      onPress={onOpen}
+      style={({ pressed }) => [styles.card, shadow.card, pressed && { opacity: 0.85 }]}
+      accessibilityRole={compact ? 'button' : undefined}
+      accessibilityLabel={compact ? `Trajet vers ${t.to}, ${formatDeparture(t.departureAt, now)}` : undefined}>
       <View style={styles.rowBetween}>
         <View style={styles.organizer}>
           <Avatar initials={t.organizer.initials} />
@@ -276,28 +224,32 @@ function TripCard({
       </View>
 
       <View style={styles.rowBetween}>
+        {/* Someone taking a seat pops in; the row doesn't animate when the list first shows. */}
+        <LayoutAnimationConfig skipEntering>
         <View style={styles.seatsRow}>
           {Array.from({ length: t.seats }, (_, i) =>
             t.passengers[i] ? (
-              <Avatar
-                key={i}
-                initials={t.passengers[i]}
-                small
-                highlight={t.passengers[i] === me}
-                here={t.checkedIn.includes(t.passengers[i])}
-              />
+              <Animated.View key={t.passengers[i]} entering={popIn}>
+                <Avatar
+                  initials={t.passengers[i]}
+                  small
+                  highlight={t.passengers[i] === me}
+                  here={t.checkedIn.includes(t.passengers[i])}
+                />
+              </Animated.View>
             ) : (
-              <View key={i} style={styles.freeSeat} />
+              <View key={`free-${i}`} style={styles.freeSeat} />
             ),
           )}
           <Text style={styles.seatsText}>
             {t.passengers.length}/{t.seats}
           </Text>
         </View>
+        </LayoutAnimationConfig>
         <Text style={styles.share}>{formatFcfa(taxiSeatPrice(t))} / place</Text>
       </View>
 
-      {t.taxi && (
+      {!compact && t.taxi && (
         <View style={styles.taxiLine}>
           <Ionicons name="car-outline" size={14} color={colors.navy} />
           <Text style={styles.taxiText} numberOfLines={1}>
@@ -306,7 +258,7 @@ function TripCard({
         </View>
       )}
 
-      {t.departed ? (
+      {compact ? null : t.departed ? (
         <View style={[styles.lock, styles.lockGo]}>
           <Ionicons name="car" size={13} color={colors.successText} />
           <Text style={[styles.lockText, { color: colors.successText }]}>En route · bon trajet !</Text>
@@ -320,20 +272,46 @@ function TripCard({
         </View>
       )}
 
-      {isIn && (
+      {!compact && isIn && (
         <Pressable style={styles.chat} onPress={onChat} accessibilityRole="button" accessibilityLabel="Ouvrir la discussion du trajet">
           <Ionicons name="chatbubbles-outline" size={16} color={colors.primary} />
           <Text style={styles.chatText}>Discussion</Text>
           {messageCount > 0 && (
             <View style={styles.chatCount}>
-              <Text style={styles.chatCountText}>{messageCount}</Text>
+              <Text style={styles.chatCountText} maxFontSizeMultiplier={1.2}>{messageCount}</Text>
             </View>
           )}
           <Ionicons name="chevron-forward" size={14} color={colors.primary} style={{ marginLeft: 'auto' }} />
         </Pressable>
       )}
 
-      {t.departed ? null : isOrganizer ? (
+      {compact && isIn ? (
+        <View style={styles.actions}>
+          {/* At the meeting point: check in straight from the list, no need to open the trip. */}
+          {!t.departed && !isOrganizer && locked ? (
+            <Pressable
+              style={[styles.action, { flex: 1 }, here && styles.actionDone]}
+              disabled={here}
+              onPress={onCheckIn}
+              accessibilityRole="button"
+              accessibilityState={{ disabled: here }}>
+              <PopOnChange id={here ? 'here' : 'go'}>
+                <Ionicons name={here ? 'checkmark-circle' : 'hand-left-outline'} size={16} color={here ? colors.successText : '#fff'} />
+              </PopOnChange>
+              <Text style={[styles.actionText, here && { color: colors.successText }]}>{here ? 'Au rendez-vous' : 'Je suis là'}</Text>
+            </Pressable>
+          ) : (
+            <Pressable style={[styles.action, styles.actionOutline, { flex: 1 }]} onPress={onOpen} accessibilityRole="button">
+              <Ionicons name={t.departed ? 'car' : 'checkmark-circle'} size={16} color={colors.successText} />
+              <Text style={[styles.actionText, { color: colors.successText }]} numberOfLines={1}>
+                {t.departed ? 'En route · voir le trajet' : isOrganizer ? 'Ton trajet · gérer' : 'Place payée · voir le trajet'}
+              </Text>
+            </Pressable>
+          )}
+          {/* One tap to the chat: it's what you need most once you're in. Gone when the chat closes. */}
+          {now < t.departureAt + TAXI_CHAT_HOURS * 3_600_000 && <ChatButton count={messageCount} onPress={onChat} />}
+        </View>
+      ) : t.departed ? null : isOrganizer ? (
         locked ? (
           <View style={styles.actions}>
             <Pressable style={[styles.action, { flex: 1 }]} onPress={onDepart}>
@@ -357,7 +335,9 @@ function TripCard({
               disabled={here}
               onPress={onCheckIn}
               accessibilityState={{ disabled: here }}>
-              <Ionicons name={here ? 'checkmark-circle' : 'hand-left-outline'} size={16} color={here ? colors.successText : '#fff'} />
+              <PopOnChange id={here ? 'here' : 'go'}>
+                <Ionicons name={here ? 'checkmark-circle' : 'hand-left-outline'} size={16} color={here ? colors.successText : '#fff'} />
+              </PopOnChange>
               <Text style={[styles.actionText, here && { color: colors.successText }]}>{here ? 'Tu es au rendez-vous' : 'Je suis là'}</Text>
             </Pressable>
             <Pressable style={[styles.action, styles.actionOutline, styles.actionSmall]} onPress={() => onLeave(true)}>
@@ -380,11 +360,35 @@ function TripCard({
           </Text>
         </Pressable>
       )}
-    </View>
+    </Pressable>
   );
 }
 
-function Rule({ icon, text }: { icon: keyof typeof Ionicons.glyphMap; text: string }) {
+/** Round chat button with the number of new messages. */
+export function ChatButton({ count, onPress }: { count: number; onPress: () => void }) {
+  return (
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => [styles.chatRound, pressed && { opacity: 0.8 }]}
+      hitSlop={4}
+      accessibilityRole="button"
+      accessibilityLabel={count ? `Discussion, ${count} nouveau${count > 1 ? 'x' : ''} message${count > 1 ? 's' : ''}` : 'Discussion'}>
+      <Ionicons name="chatbubbles-outline" size={20} color={colors.primary} />
+      {count > 0 && (
+        // Pops on each new message, so it's noticed without reading the number.
+        <View style={styles.chatBadgeWrap} pointerEvents="none">
+          <PopOnChange id={count}>
+            <View style={styles.chatBadge}>
+              <Text style={styles.chatBadgeText} maxFontSizeMultiplier={1.2}>{count > 9 ? '9+' : count}</Text>
+            </View>
+          </PopOnChange>
+        </View>
+      )}
+    </Pressable>
+  );
+}
+
+export function Rule({ icon, text }: { icon: keyof typeof Ionicons.glyphMap; text: string }) {
   return (
     <View style={styles.rule}>
       <Ionicons name={icon} size={16} color={colors.primary} />
@@ -393,7 +397,7 @@ function Rule({ icon, text }: { icon: keyof typeof Ionicons.glyphMap; text: stri
   );
 }
 
-function Avatar({ initials, small, highlight, here }: { initials: string; small?: boolean; highlight?: boolean; here?: boolean }) {
+export function Avatar({ initials, small, highlight, here }: { initials: string; small?: boolean; highlight?: boolean; here?: boolean }) {
   return (
     <View style={[styles.avatar, small && styles.avatarSmall, highlight && styles.avatarMe, here && styles.avatarHere]}>
       <Text style={[styles.avatarText, small && { fontSize: 9 }]}>{initials}</Text>
@@ -504,39 +508,38 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 12,
   },
-  heroTitle: { color: '#fff', fontSize: 16, fontWeight: '700' },
-  heroSub: { color: 'rgba(255,255,255,0.85)', fontSize: 12, marginTop: 4, lineHeight: 17 },
+  heroTitle: { ...typo.title, color: '#fff' },
+  heroSub: { ...typo.caption, color: 'rgba(255,255,255,0.85)', marginTop: 4, lineHeight: 17 },
   heroBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
     backgroundColor: '#fff',
     paddingHorizontal: 14,
-    height: 40,
+    minHeight: 40,
     borderRadius: radii.pill,
   },
-  heroBtnText: { color: colors.primary, fontWeight: '700', fontSize: 13 },
-  section: { fontSize: 18, fontWeight: '800', color: colors.navy, marginTop: 8 },
-  empty: { color: colors.muted2, textAlign: 'center', paddingVertical: 24 },
+  heroBtnText: { ...typo.smallStrong, color: colors.primary },
+  section: { ...typo.h3, color: colors.navy, marginTop: 8 },
   card: { backgroundColor: colors.card, borderRadius: radii.lg, padding: 14, gap: 12 },
   rowBetween: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
   organizer: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  organizerName: { fontSize: 14, fontWeight: '700', color: colors.navy },
+  organizerName: { ...typo.bodyStrong, color: colors.navy },
   organizerRole: { fontSize: 11, color: colors.muted2 },
-  departure: { fontSize: 12, fontWeight: '700', color: colors.primary },
+  departure: { ...typo.captionStrong, color: colors.primary },
   route: { flexDirection: 'row', gap: 10 },
   routeLine: { alignItems: 'center', paddingTop: 4, width: 14 },
   routeFrom: { width: 10, height: 10, borderRadius: 5, borderWidth: 2, borderColor: colors.primary },
   routeBar: { width: 2, height: 14, backgroundColor: colors.border, marginVertical: 2 },
   place: { fontSize: 14, fontWeight: '600', color: colors.text },
   seatsRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  seatsText: { fontSize: 12, color: colors.muted2, marginLeft: 4 },
+  seatsText: { ...typo.caption, color: colors.muted2, marginLeft: 4 },
   freeSeat: { width: 22, height: 22, borderRadius: 11, borderWidth: 1.5, borderColor: colors.border, borderStyle: 'dashed' },
-  share: { fontSize: 13, fontWeight: '700', color: colors.navy },
+  share: { ...typo.smallStrong, color: colors.navy },
   action: {
     flexDirection: 'row',
     gap: 6,
-    height: 40,
+    minHeight: 40,
     borderRadius: radii.pill,
     backgroundColor: colors.accent,
     alignItems: 'center',
@@ -549,20 +552,34 @@ const styles = StyleSheet.create({
   actions: { flexDirection: 'row', gap: 8 },
   rules: { backgroundColor: colors.card, borderRadius: radii.lg, padding: 14, gap: 10 },
   rule: { flexDirection: 'row', alignItems: 'flex-start', gap: 8 },
-  ruleText: { flex: 1, fontSize: 13, color: colors.text, lineHeight: 18 },
+  ruleText: { ...typo.small, flex: 1, color: colors.text, lineHeight: 18 },
   strikes: { flexDirection: 'row', gap: 8, padding: 12, borderRadius: radii.md, backgroundColor: colors.warningBg },
-  strikesText: { flex: 1, fontSize: 13, color: colors.warningText, lineHeight: 18 },
+  strikesText: { ...typo.small, flex: 1, color: colors.warningText, lineHeight: 18 },
   lock: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 10, paddingVertical: 6, borderRadius: radii.sm, backgroundColor: colors.bg },
   lockOn: { backgroundColor: colors.warningBg },
   lockGo: { backgroundColor: colors.successBg },
   taxiLine: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  taxiText: { flex: 1, fontSize: 13, fontWeight: '700', color: colors.navy },
-  chat: { flexDirection: 'row', alignItems: 'center', gap: 6, height: 40, paddingHorizontal: 14, borderRadius: radii.pill, backgroundColor: colors.primarySoft },
-  chatText: { fontSize: 14, fontWeight: '700', color: colors.primary },
+  taxiText: { ...typo.smallStrong, flex: 1, color: colors.navy },
+  chat: { flexDirection: 'row', alignItems: 'center', gap: 6, minHeight: 40, paddingHorizontal: 14, borderRadius: radii.pill, backgroundColor: colors.primarySoft },
+  chatText: { ...typo.bodyStrong, color: colors.primary },
   chatCount: { minWidth: 18, height: 18, paddingHorizontal: 5, borderRadius: 9, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center' },
-  chatCountText: { fontSize: 11, fontWeight: '700', color: '#fff' },
+  chatRound: { width: 44, height: 44, borderRadius: 22, backgroundColor: colors.primarySoft, alignItems: 'center', justifyContent: 'center' },
+  chatBadgeWrap: { position: 'absolute', top: -2, right: -2 },
+  chatBadge: {
+    minWidth: 18,
+    height: 18,
+    paddingHorizontal: 4,
+    borderRadius: 9,
+    backgroundColor: colors.dangerText,
+    borderWidth: 2,
+    borderColor: colors.card,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  chatBadgeText: { fontSize: 11, fontWeight: '800', color: '#fff' },
+  chatCountText: { ...typo.label, color: '#fff' },
   lockText: { flex: 1, fontSize: 12, fontWeight: '600', color: colors.muted2 },
-  actionText: { color: '#fff', fontWeight: '700', fontSize: 14 },
+  actionText: { ...typo.bodyStrong, color: '#fff' },
   avatar: {
     width: 34,
     height: 34,
@@ -575,7 +592,7 @@ const styles = StyleSheet.create({
   avatarMe: { backgroundColor: colors.primary },
   // Green ring: at the meeting point.
   avatarHere: { borderWidth: 2, borderColor: colors.success },
-  avatarText: { color: '#fff', fontWeight: '700', fontSize: 12 },
+  avatarText: { ...typo.captionStrong, color: '#fff' },
   backdrop: { flex: 1, backgroundColor: 'rgba(15,27,76,0.4)' },
   sheet: {
     backgroundColor: colors.card,
@@ -587,11 +604,11 @@ const styles = StyleSheet.create({
     maxHeight: 640,
   },
   handle: { alignSelf: 'center', width: 40, height: 4, borderRadius: 2, backgroundColor: colors.border, marginBottom: 14 },
-  sheetTitle: { fontSize: 18, fontWeight: '800', color: colors.navy, marginBottom: 12 },
+  sheetTitle: { ...typo.h3, color: colors.navy, marginBottom: 12 },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   chip: {
     paddingHorizontal: 14,
-    height: 40,
+    minHeight: 40,
     borderRadius: radii.pill,
     backgroundColor: colors.card,
     borderWidth: 1,
@@ -603,5 +620,5 @@ const styles = StyleSheet.create({
   chipText: { fontWeight: '600', color: colors.navy },
   chipTextOn: { color: '#fff' },
   fcfa: { color: colors.muted2, fontWeight: '600' },
-  hint: { fontSize: 12, color: colors.muted2, marginTop: -6 },
+  hint: { ...typo.caption, color: colors.muted2, marginTop: -6 },
 });

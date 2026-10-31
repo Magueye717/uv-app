@@ -6,8 +6,9 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { PlacesMap } from '@/components/PlacesMap';
 import { Field, FilterChips } from '@/components/ui';
+import { EmptyState } from '@/components/states';
 import { placeCategories, places } from '@/constants/data';
-import { colors, radii, shadow } from '@/constants/theme';
+import { colors, radii, shadow, typo } from '@/constants/theme';
 import { openDirections } from '@/lib/maps';
 import { matches } from '@/lib/search';
 
@@ -66,10 +67,18 @@ export function PlacesBoard() {
         </View>
 
         {list.length === 0 && (
-          <View style={styles.empty}>
-            <Ionicons name="search-outline" size={26} color={colors.muted} />
-            <Text style={styles.emptyText}>Aucun lieu pour « {query.trim()} »{filter !== 'Tout' ? ` dans ${filter}` : ''}.</Text>
-          </View>
+          <EmptyState
+            icon="search-outline"
+            title={`Aucun lieu pour « ${query.trim()} »${filter !== 'Tout' ? ` dans ${filter}` : ''}`}
+            text="Vérifie l’orthographe ou cherche un autre mot."
+            action={{
+              label: 'Effacer la recherche',
+              onPress: () => {
+                setQuery('');
+                setFilter('Tout');
+              },
+            }}
+          />
         )}
 
         {list.map((p) => (
@@ -88,7 +97,7 @@ export function PlacesBoard() {
               {p.photos.length > 1 && (
                 <View style={styles.count}>
                   <Ionicons name="images" size={10} color="#fff" />
-                  <Text style={styles.countText}>{p.photos.length}</Text>
+                  <Text style={styles.countText} maxFontSizeMultiplier={1.2}>{p.photos.length}</Text>
                 </View>
               )}
             </View>
@@ -121,7 +130,7 @@ export function PlacesBoard() {
               onPress={() => openDirections(p.coords, p.name)}
               accessibilityRole="link"
               accessibilityLabel={`Itinéraire vers ${p.name}`}>
-              <Ionicons name="navigate" size={18} color={colors.primary} />
+              <Ionicons name="navigate-outline" size={18} color={colors.primary} />
             </Pressable>
           </Pressable>
         ))}
@@ -134,14 +143,12 @@ const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
   body: { padding: 20, gap: 12, paddingBottom: 32 },
   search: { paddingHorizontal: 20, marginTop: 14 },
-  empty: { alignItems: 'center', gap: 8, paddingVertical: 28 },
-  emptyText: { color: colors.muted2, textAlign: 'center' },
   sectionRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 6 },
-  section: { fontSize: 18, fontWeight: '800', color: colors.navy },
+  section: { ...typo.h3, color: colors.navy },
   link: { color: colors.primary, fontWeight: '700' },
   card: { backgroundColor: colors.card, borderRadius: radii.lg, padding: 12, flexDirection: 'row', alignItems: 'center', gap: 12 },
   photo: { width: 88, height: 88, borderRadius: radii.md, overflow: 'hidden', alignItems: 'center', justifyContent: 'center' },
-  title: { fontWeight: '700', color: colors.navy, fontSize: 15 },
+  title: { ...typo.title, color: colors.navy },
   // Number of photos, on the cover's corner.
   count: {
     position: 'absolute',
@@ -155,11 +162,11 @@ const styles = StyleSheet.create({
     borderRadius: radii.pill,
     backgroundColor: 'rgba(15,27,76,0.65)',
   },
-  countText: { fontSize: 10, fontWeight: '700', color: '#fff' },
+  countText: { ...typo.label, color: '#fff' },
   cat: { flexDirection: 'row', alignItems: 'center', gap: 4, alignSelf: 'flex-start', paddingHorizontal: 8, paddingVertical: 2, borderRadius: radii.pill },
-  catText: { fontSize: 11, fontWeight: '700' },
+  catText: { ...typo.label },
   meta: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  metaText: { flex: 1, fontSize: 12, color: colors.muted2 },
+  metaText: { ...typo.caption, flex: 1, color: colors.muted2 },
   nav: {
     width: 38,
     height: 38,

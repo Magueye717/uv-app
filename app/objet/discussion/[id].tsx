@@ -18,7 +18,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { BackButton } from '@/components/ui';
 import { lostCategory, lostQuickReplies, lostSafetyTip, type LostMessage } from '@/constants/data';
-import { colors, radii } from '@/constants/theme';
+import { colors, radii, typo } from '@/constants/theme';
 import { useLost } from '@/context/LostContext';
 
 const time = (at: number) => {
@@ -177,8 +177,8 @@ const styles = StyleSheet.create({
   head: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 20, paddingTop: 8, paddingBottom: 10 },
   item: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10 },
   thumb: { width: 40, height: 40, borderRadius: radii.sm, overflow: 'hidden', alignItems: 'center', justifyContent: 'center' },
-  title: { fontSize: 16, fontWeight: '700', color: colors.navy },
-  subtitle: { fontSize: 12, color: colors.muted2, marginTop: 1 },
+  title: { ...typo.title, color: colors.navy },
+  subtitle: { ...typo.caption, color: colors.muted2, marginTop: 1 },
   thread: { padding: 16, gap: 8 },
   safety: { flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'center', paddingHorizontal: 12, paddingVertical: 6, borderRadius: radii.md, backgroundColor: colors.card, marginBottom: 6 },
   safetyText: { fontSize: 11, color: colors.muted2, flexShrink: 1 },
@@ -187,13 +187,13 @@ const styles = StyleSheet.create({
   bubble: { maxWidth: '80%', paddingHorizontal: 12, paddingVertical: 8, borderRadius: radii.md },
   mine: { alignSelf: 'flex-end', backgroundColor: colors.primary, borderBottomRightRadius: 4 },
   theirs: { alignSelf: 'flex-start', backgroundColor: colors.card, borderBottomLeftRadius: 4 },
-  text: { fontSize: 14, color: colors.text, lineHeight: 19 },
-  time: { fontSize: 10, color: colors.muted2, alignSelf: 'flex-end', marginTop: 2 },
+  text: { ...typo.body, color: colors.text, lineHeight: 19 },
+  time: { fontSize: 11, color: colors.muted2, alignSelf: 'flex-end', marginTop: 2 },
   closed: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, padding: 16 },
   closedText: { fontSize: 13, fontWeight: '600', color: colors.successText },
   composer: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border, backgroundColor: colors.card, paddingVertical: 8, gap: 8 },
   quick: { gap: 8, paddingHorizontal: 12 },
-  quickChip: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 14, height: 40, borderRadius: radii.pill, backgroundColor: colors.primarySoft },
+  quickChip: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 14, minHeight: 40, borderRadius: radii.pill, backgroundColor: colors.primarySoft },
   doneChip: { backgroundColor: colors.successBg },
   quickText: { fontSize: 13, fontWeight: '600', color: colors.primary },
   inputRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 8, paddingHorizontal: 12 },
@@ -206,7 +206,7 @@ const styles = StyleSheet.create({
     paddingBottom: 11,
     borderRadius: radii.lg,
     backgroundColor: colors.input,
-    fontSize: 15,
+    fontSize: 16,
     color: colors.text,
   },
   send: { width: 42, height: 42, borderRadius: 21, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center' },

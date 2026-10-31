@@ -6,7 +6,8 @@ import { BackHandler, KeyboardAvoidingView, Platform, Pressable, ScrollView, Sty
 import Animated, { FadeInLeft, FadeInRight, useAnimatedStyle, withTiming } from 'react-native-reanimated';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { colors, radii } from '@/constants/theme';
+import { BrandLogo } from '@/components/BrandLogo';
+import { colors, radii, typo } from '@/constants/theme';
 import { useAuth } from '@/context/AuthContext';
 import { accountExists, createAccount, getLinkedEmail, sendOtp } from '@/features/register/auth';
 import {
@@ -141,10 +142,8 @@ export default function RegisterScreen() {
             <Ionicons name="arrow-back" size={20} color="#fff" />
           </Pressable>
           <View style={styles.brand}>
-            <View style={styles.brandLogo}>
-              <Ionicons name="school" size={13} color="#fff" />
-            </View>
-            <Text style={styles.brandText}>UV-APP</Text>
+            <BrandLogo size={28} />
+            <Text style={styles.brandText}>UGB Campus</Text>
           </View>
           <Text style={styles.stepLabel}>
             {step}/{TOTAL_STEPS}
@@ -249,15 +248,14 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.2)',
   },
-  brandLogo: { width: 24, height: 24, borderRadius: 12, backgroundColor: colors.orange, alignItems: 'center', justifyContent: 'center' },
-  brandText: { fontSize: 13, fontWeight: '700', color: '#fff', letterSpacing: 0.4 },
-  stepLabel: { width: 44, textAlign: 'right', fontSize: 14, fontWeight: '700', color: 'rgba(255,255,255,0.7)' },
+  brandText: { ...typo.smallStrong, color: '#fff', letterSpacing: 0.4 },
+  stepLabel: { ...typo.bodyStrong, width: 44, textAlign: 'right', color: 'rgba(255,255,255,0.7)' },
   bars: { flexDirection: 'row', gap: 6, paddingHorizontal: 20, paddingTop: 18 },
   bar: { flex: 1, height: 5, borderRadius: 3, backgroundColor: 'rgba(255,255,255,0.15)', overflow: 'hidden' },
   barFill: { height: '100%', borderRadius: 3, backgroundColor: colors.orange },
   heading: { paddingHorizontal: 24, paddingTop: 20, paddingBottom: 26, gap: 6 },
-  h1: { fontSize: 30, fontWeight: '800', color: '#fff', letterSpacing: -0.5 },
-  subtitle: { fontSize: 15, color: 'rgba(255,255,255,0.75)', lineHeight: 21 },
+  h1: { ...typo.display, color: '#fff', letterSpacing: -0.5 },
+  subtitle: { ...typo.body, color: 'rgba(255,255,255,0.75)', lineHeight: 21 },
   sheet: { flex: 1, backgroundColor: colors.card, borderTopLeftRadius: radii.xl, borderTopRightRadius: radii.xl, overflow: 'hidden' },
   content: { padding: 24, paddingTop: 28, paddingBottom: 48 },
 });

@@ -5,7 +5,7 @@ import Animated, { FadeInDown, FadeOut, useAnimatedStyle, useSharedValue, withSp
 
 import { Select } from '@/components/Select';
 import { Field, LabeledField, PrimaryButton } from '@/components/ui';
-import { colors, radii } from '@/constants/theme';
+import { colors, radii, typo } from '@/constants/theme';
 import {
   CAMPUSES,
   normalizeRoom,
@@ -64,7 +64,7 @@ export function StepProfile({ values, onChange, onSubmit, submitting, submitErro
 
   return (
     <View style={{ gap: 26 }}>
-      <Section icon="person" title="Toi">
+      <Section icon="person-outline" title="Toi">
         <View style={styles.row}>
           <View style={{ flex: 1 }}>
             <LabeledField label="Prénom" error={shown('firstName')}>
@@ -99,7 +99,7 @@ export function StepProfile({ values, onChange, onSubmit, submitting, submitErro
         </View>
       </Section>
 
-      <Section icon="business" title="Ton campus" hint="Obligatoire">
+      <Section icon="business-outline" title="Ton campus" hint="Obligatoire">
         <View style={styles.row} accessibilityRole="radiogroup">
           {CAMPUSES.map((c) => (
             <CampusCard
@@ -124,7 +124,7 @@ export function StepProfile({ values, onChange, onSubmit, submitting, submitErro
 
       {campus && (
         <Animated.View entering={FadeInDown.duration(260)}>
-          <Section icon="home" title="Ton logement">
+          <Section icon="home-outline" title="Ton logement">
             <View style={styles.toggle}>
               {[
                 { on: true, label: 'J’habite au campus', icon: 'bed-outline' as const },
@@ -190,7 +190,7 @@ export function StepProfile({ values, onChange, onSubmit, submitting, submitErro
         </Animated.View>
       )}
 
-      <Section icon="lock-closed" title="Sécurité">
+      <Section icon="lock-closed-outline" title="Sécurité">
         <LabeledField label="Mot de passe">
           <Field
             accent={ACCENT}
@@ -294,7 +294,7 @@ function CampusCard({ label, detail, selected, onPress }: { label: string; detai
         accessibilityState={{ checked: selected }}
         accessibilityLabel={`${label}, ${detail}`}>
         <View style={[styles.campusIcon, selected && { backgroundColor: ACCENT }]}>
-          <Ionicons name="business" size={20} color={selected ? '#fff' : colors.navy} />
+          <Ionicons name={selected ? 'business' : 'business-outline'} size={20} color={selected ? '#fff' : colors.navy} />
         </View>
         <Text style={[styles.campusLabel, selected && { color: '#fff' }]}>{label}</Text>
         <Text style={[styles.campusDetail, selected && { color: 'rgba(255,255,255,0.75)' }]}>{detail}</Text>
@@ -321,8 +321,8 @@ const styles = StyleSheet.create({
   row: { flexDirection: 'row', gap: 12 },
   sectionHead: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   sectionIcon: { width: 24, height: 24, borderRadius: 12, backgroundColor: '#FFE8D4', alignItems: 'center', justifyContent: 'center' },
-  sectionTitle: { flex: 1, fontSize: 13, fontWeight: '700', color: colors.navy, textTransform: 'uppercase', letterSpacing: 0.6 },
-  sectionHint: { fontSize: 11, fontWeight: '700', color: colors.orangeText },
+  sectionTitle: { ...typo.smallStrong, flex: 1, color: colors.navy, textTransform: 'uppercase', letterSpacing: 0.6 },
+  sectionHint: { ...typo.label, color: colors.orangeText },
   // Navy when picked, like the welcome screen.
   campus: {
     minHeight: 112,
@@ -335,14 +335,14 @@ const styles = StyleSheet.create({
   },
   campusOn: { backgroundColor: colors.navy, borderColor: colors.navy },
   campusIcon: { width: 36, height: 36, borderRadius: radii.sm, backgroundColor: colors.card, alignItems: 'center', justifyContent: 'center', marginBottom: 6 },
-  campusLabel: { fontSize: 16, fontWeight: '700', color: colors.navy },
-  campusDetail: { fontSize: 12, color: colors.muted2 },
+  campusLabel: { ...typo.title, color: colors.navy },
+  campusDetail: { ...typo.caption, color: colors.muted2 },
   check: { position: 'absolute', top: 10, right: 10, width: 22, height: 22, borderRadius: 11, backgroundColor: ACCENT, alignItems: 'center', justifyContent: 'center' },
   toggle: { flexDirection: 'row', padding: 4, borderRadius: radii.pill, backgroundColor: colors.input },
-  toggleBtn: { flex: 1, flexDirection: 'row', gap: 6, height: 40, borderRadius: radii.pill, alignItems: 'center', justifyContent: 'center' },
+  toggleBtn: { flex: 1, flexDirection: 'row', gap: 6, minHeight: 40, borderRadius: radii.pill, alignItems: 'center', justifyContent: 'center' },
   toggleOn: { backgroundColor: colors.card, shadowColor: '#1E2A5A', shadowOpacity: 0.08, shadowRadius: 6, shadowOffset: { width: 0, height: 2 }, elevation: 2 },
-  toggleText: { fontSize: 13, fontWeight: '700', color: colors.muted2 },
-  note: { fontSize: 12, color: colors.muted2, lineHeight: 17 },
+  toggleText: { ...typo.smallStrong, color: colors.muted2 },
+  note: { ...typo.caption, color: colors.muted2, lineHeight: 17 },
   rules: { gap: 6, marginTop: 4 },
   rule: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   ruleDot: {
@@ -355,7 +355,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   ruleDotOk: { backgroundColor: colors.success, borderColor: colors.success },
-  ruleText: { fontSize: 12, color: colors.muted2 },
+  ruleText: { ...typo.caption, color: colors.muted2 },
   checkRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
   checkbox: {
     width: 22,
@@ -370,7 +370,7 @@ const styles = StyleSheet.create({
   },
   checkboxOn: { backgroundColor: ACCENT, borderColor: ACCENT },
   checkboxInvalid: { borderColor: colors.danger },
-  checkText: { flex: 1, fontSize: 13, lineHeight: 20, color: colors.text },
+  checkText: { ...typo.small, flex: 1, lineHeight: 20, color: colors.text },
   link: { fontWeight: '700', color: colors.orangeText },
-  error: { fontSize: 12, color: colors.danger },
+  error: { ...typo.caption, color: colors.danger },
 });

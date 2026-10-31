@@ -1,5 +1,6 @@
 import Constants from 'expo-constants';
 import * as Notifications from 'expo-notifications';
+import { AndroidImportance, AndroidNotificationVisibility } from 'expo-notifications';
 import { router } from 'expo-router';
 import { useEffect } from 'react';
 import { Platform } from 'react-native';
@@ -54,13 +55,13 @@ async function createAndroidChannel() {
     await Notifications.setNotificationChannelAsync(CHANNEL_ID, {
       name: 'Infos du campus',
       description: 'Menus, caravanes et alertes du campus',
-      importance: Notifications.AndroidImportance.HIGH,
+      importance: AndroidImportance.HIGH,
       vibrationPattern: [0, 250, 250, 250],
       lightColor: '#0F1B4C',
       showBadge: true,
       enableVibrate: true,
       enableLights: true,
-      lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+      lockscreenVisibility: AndroidNotificationVisibility.PUBLIC,
     });
     channelId = CHANNEL_ID;
   } catch (e) {
@@ -93,16 +94,12 @@ async function scheduleMealReminders() {
   }
 }
 
-/** Reminds the student 2 hours before a booked caravan leaves. */
-export async function scheduleCaravanReminder(caravan: {
-  id: string;
-  from: string;
-  to: string;
-  time: string;
-  meetingPoint: string;
-  departureAt: number;
-}) {
-  const remindAt = caravan.departureAt - 2 * 60 * 60 * 1000;
+/** Reminds the student 2 hours before the bus reaches their pickup point. */
+export async function scheduleCaravanReminder(
+  caravan: { id: string; from: string; to: string },
+  pickup: { place: string; time: string; at: number },
+) {
+  const remindAt = pickup.at - 2 * 60 * 60 * 1000;
   if (remindAt <= Date.now()) return;
   try {
     const { granted } = await Notifications.getPermissionsAsync();
@@ -110,8 +107,8 @@ export async function scheduleCaravanReminder(caravan: {
     await Notifications.scheduleNotificationAsync({
       identifier: `caravan-${caravan.id}`,
       content: {
-        title: `Ta caravane ${caravan.from} → ${caravan.to} part dans 2 h`,
-        body: `Départ à ${caravan.time} · ${caravan.meetingPoint}`,
+        title: `Ta caravane ${caravan.from} → ${caravan.to} passe dans 2 h`,
+        body: `Montée à ${pickup.time} · ${pickup.place}. Sois-y 15 min avant.`,
         data: { url: `/caravane/${caravan.id}` } satisfies NotificationData,
       },
       trigger: {
@@ -126,6 +123,39 @@ export async function scheduleCaravanReminder(caravan: {
 }
 
 /**
+ * Sunu Taxi: when seats lock (30 min before), remind the student to check in at the meeting point.
+ * Tapping it opens the trip, where "Je suis là" is one tap away.
+ */
+export async function scheduleTaxiReminder(trip: { id: string; from: string; departureAt: number }, lockMinutes: number) {
+  const remindAt = trip.departureAt - lockMinutes * 60 * 1000;
+  if (remindAt <= Date.now()) return;
+  try {
+    const { granted } = await Notifications.getPermissionsAsync();
+    if (!granted) return;
+    await Notifications.scheduleNotificationAsync({
+      identifier: `taxi-${trip.id}`,
+      content: {
+        title: `Ton taxi part dans ${lockMinutes} min`,
+        body: `Rendez-vous ${trip.from.split(' · ').pop()}. Appuie sur « Je suis là » en arrivant.`,
+        data: { url: `/taxi/${trip.id}` } satisfies NotificationData,
+      },
+      trigger: {
+        type: Notifications.SchedulableTriggerInputTypes.DATE,
+        date: new Date(remindAt),
+        channelId,
+      },
+    });
+  } catch (e) {
+    if (__DEV__) console.warn('Taxi reminder not scheduled', e);
+  }
+}
+
+/** No reminder once the student left, cancelled, handed over or already checked in. */
+export function cancelTaxiReminder(tripId: string) {
+  Notifications.cancelScheduledNotificationAsync(`taxi-${tripId}`).catch(() => {});
+}
+
+/**
  * Gets this device's Expo push token so a server can send campus alerts (bourse payée, plat épuisé,
  * cours déplacé). Needs an EAS project ID (`eas init`) and a development build; Expo Go on Android
  * can't receive remote push. Returns null until both exist.
@@ -135,7 +165,7 @@ export async function registerPushToken(): Promise<string | null> {
   if (!projectId) return null;
   try {
     const { data: token } = await Notifications.getExpoPushTokenAsync({ projectId });
-    // TODO: send `token` to the UV-APP backend once it exists.
+    // TODO: send `token` to the UGB Campus backend once it exists.
     return token;
   } catch {
     // Network error or Expo Go on Android: try again on next launch.

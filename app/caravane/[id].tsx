@@ -6,27 +6,17 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { CaravanSummary, FillBar, OrganizerLine } from '@/components/caravan';
 import { BackButton } from '@/components/ui';
-import { caravanState, caravans, formatDateTime, formatFcfa, paymentMethods } from '@/constants/data';
+import { caravanState, caravans, takenSeats, formatDateTime, formatFcfa, paymentMethods, stopDepartureAt, type CaravanStop } from '@/constants/data';
 import { PaymentLogo } from '@/components/PaymentLogo';
-import { colors, radii, shadow } from '@/constants/theme';
+import { colors, radii, shadow, typo } from '@/constants/theme';
 import { useTickets } from '@/context/TicketsContext';
+import { haptics } from '@/lib/haptics';
 import { scheduleCaravanReminder } from '@/lib/notifications';
 
 const SEATS_PER_ROW = 4;
 // Seats 1 and 4 of each row of 4 are by the window.
 const isWindow = (n: number) => n % SEATS_PER_ROW === 1 || n % SEATS_PER_ROW === 0;
 const SERVICE_FEE = 0;
-
-// Mock: spread the occupied seats across the bus, stable per caravan.
-function takenSeats(id: string, total: number, free: number) {
-  const taken = new Set<number>();
-  let n = id.charCodeAt(id.length - 1) % total;
-  while (taken.size < total - free) {
-    n = (n + 7) % total; // 7 is coprime with 64, so every seat is reached
-    taken.add(n + 1);
-  }
-  return taken;
-}
 
 export default function CaravaneReservation() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -41,8 +31,9 @@ export default function CaravaneReservation() {
     const free = Array.from({ length: c.totalSeats }, (_, i) => i + 1).filter((n) => !taken.has(n));
     setSeat(free.find(isWindow) ?? free[0] ?? null);
   };
-  // Only one stop: nothing to choose.
-  const [stop, setStop] = useState<string | null>(c.stops.length === 1 ? c.stops[0] : null);
+  // A single choice is made for the student.
+  const [pickup, setPickup] = useState<CaravanStop | null>(c.pickups.length === 1 ? c.pickups[0] : null);
+  const [dropoff, setDropoff] = useState<CaravanStop | null>(c.dropoffs.length === 1 ? c.dropoffs[0] : null);
   const [payment, setPayment] = useState(paymentMethods[0].id);
   const { confirmed } = caravanState(c);
 
@@ -50,17 +41,20 @@ export default function CaravaneReservation() {
     Array.from({ length: SEATS_PER_ROW }, (_, i) => r * SEATS_PER_ROW + i + 1),
   );
   const total = c.price + SERVICE_FEE;
+  const ready = !!seat && !!pickup && !!dropoff;
 
   const pay = () => {
-    if (!seat || !stop) return;
-    scheduleCaravanReminder(c);
-    const ticket = book({ caravanId: c.id, seat, stop, paymentId: payment, price: c.price });
+    if (!seat || !pickup || !dropoff) return;
+    const ticket = book({ caravanId: c.id, seat, pickup, dropoff, paymentId: payment, price: c.price });
+    if (ticket) scheduleCaravanReminder(c, { ...pickup, at: stopDepartureAt(c, pickup) });
     if (!ticket) return;
+    haptics.success();
+
     const method = paymentMethods.find((m) => m.id === payment)?.name;
     Alert.alert(
       'Paiement envoyé',
       `Valide le paiement de ${formatFcfa(total)} sur ${method}. Ton argent reste bloqué jusqu’au départ : si la caravane est annulée, tu es remboursé.`,
-      [{ text: 'Voir mon billet', onPress: () => router.replace(`/billet/${ticket.id}`) }],
+      [{ text: 'Voir mon billet', onPress: () => router.replace({ pathname: '/billet/[id]', params: { id: ticket.id, nouveau: '1' } }) }],
     );
   };
 
@@ -100,7 +94,7 @@ export default function CaravaneReservation() {
 
         {existing ? (
           <View style={[styles.card, shadow.card, styles.already]}>
-            <Ionicons name="ticket" size={28} color={colors.primary} />
+            <Ionicons name="ticket-outline" size={28} color={colors.primary} />
             <Text style={styles.alreadyTitle}>
               {existing.status === 'transferred' ? 'Tu as transféré ton billet' : 'Tu as déjà un billet pour ce départ'}
             </Text>
@@ -197,27 +191,22 @@ export default function CaravaneReservation() {
             </>
           )}
 
-          {c.stops.length > 1 && (
-            <>
-              <Text style={styles.section}>Où descends-tu à {c.to} ?</Text>
-              <View style={styles.stops}>
-                {c.stops.map((s) => {
-                  const on = s === stop;
-                  return (
-                    <Pressable
-                      key={s}
-                      onPress={() => setStop(s)}
-                      style={[styles.stop, on && styles.stopOn]}
-                      accessibilityRole="radio"
-                      accessibilityState={{ checked: on }}>
-                      <Ionicons name="location" size={14} color={on ? '#fff' : colors.primary} />
-                      <Text style={[styles.stopText, on && { color: '#fff' }]}>{s}</Text>
-                    </Pressable>
-                  );
-                })}
-              </View>
-            </>
-          )}
+          {/* Like the organizers' own timetables: every stop with the bus's time there. */}
+          <StopPicker
+            title="Où montes-tu ?"
+            hint="Sois au point de montée 15 min avant l’heure : le bus n’attend pas."
+            stops={c.pickups}
+            value={pickup}
+            onChange={setPickup}
+          />
+          <StopPicker
+            title="Où descends-tu ?"
+            hint="Heures d’arrivée estimées, selon la circulation."
+            stops={c.dropoffs}
+            value={dropoff}
+            onChange={setDropoff}
+            estimated
+          />
 
           <Text style={styles.section}>Moyen de paiement</Text>
           {paymentMethods.map((m) => {
@@ -244,7 +233,8 @@ export default function CaravaneReservation() {
               k={seat ? `Place n° ${seat} · Rangée ${Math.ceil(seat / SEATS_PER_ROW)}` : 'Aucune place choisie'}
               v={formatFcfa(c.price)}
             />
-            <RecapRow k="Descente" v={stop ?? 'À choisir'} />
+            <RecapRow k="Montée" v={pickup ? `${pickup.place} · ${pickup.time}` : 'À choisir'} />
+            <RecapRow k="Descente" v={dropoff?.place ?? 'À choisir'} />
             <RecapRow k="Frais de service" v={formatFcfa(SERVICE_FEE)} />
             <View style={styles.divider} />
             <View style={styles.recapRow}>
@@ -253,10 +243,16 @@ export default function CaravaneReservation() {
             </View>
           </View>
 
-          <Pressable disabled={!seat || !stop} onPress={pay} style={[styles.pay, (!seat || !stop) && styles.payDisabled]}>
+          <Pressable disabled={!ready} onPress={pay} style={[styles.pay, !ready && styles.payDisabled]}>
             <Ionicons name="checkmark" size={18} color="#fff" />
             <Text style={styles.payText}>
-              {!seat ? 'Choisis une place' : !stop ? 'Choisis ton arrêt' : `Payer ${formatFcfa(total)}`}
+              {!seat
+                ? 'Choisis une place'
+                : !pickup
+                  ? 'Choisis ton point de montée'
+                  : !dropoff
+                    ? 'Choisis ta descente'
+                    : `Payer ${formatFcfa(total)}`}
             </Text>
           </Pressable>
           <Text style={styles.note}>Billet avec QR code dans l’app après paiement</Text>
@@ -285,6 +281,59 @@ function Guarantee({ icon, text }: { icon: keyof typeof Ionicons.glyphMap; text:
   );
 }
 
+function StopPicker({
+  title,
+  hint,
+  stops,
+  value,
+  onChange,
+  estimated,
+}: {
+  title: string;
+  hint: string;
+  stops: CaravanStop[];
+  value: CaravanStop | null;
+  onChange: (s: CaravanStop) => void;
+  estimated?: boolean;
+}) {
+  return (
+    <View style={{ gap: 8 }}>
+      <Text style={styles.section}>{title}</Text>
+      <View style={[styles.card, shadow.card, styles.stopList]}>
+        {stops.map((s, i) => {
+          const on = s.place === value?.place;
+          const only = stops.length === 1;
+          return (
+            <Pressable
+              key={s.place}
+              onPress={() => onChange(s)}
+              disabled={only}
+              style={[styles.stopRow, on && styles.stopRowOn]}
+              accessibilityRole="radio"
+              accessibilityState={{ checked: on }}
+              accessibilityLabel={`${s.place}, ${estimated ? 'vers ' : ''}${s.time}`}>
+              {/* Route line: dots joined top to bottom, like a timetable. */}
+              <View style={styles.rail}>
+                <View style={[styles.railLine, i === 0 && { backgroundColor: 'transparent' }]} />
+                <View style={[styles.railDot, on && styles.railDotOn]}>
+                  {on && <Ionicons name="checkmark" size={11} color="#fff" />}
+                </View>
+                <View style={[styles.railLine, i === stops.length - 1 && { backgroundColor: 'transparent' }]} />
+              </View>
+              <Text style={[styles.stopPlace, on && styles.stopPlaceOn]}>{s.place}</Text>
+              <Text style={[styles.stopTime, on && styles.stopPlaceOn]}>
+                {estimated ? '~' : ''}
+                {s.time}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </View>
+      <Text style={styles.stopHint}>{hint}</Text>
+    </View>
+  );
+}
+
 function RecapRow({ k, v }: { k: string; v: string }) {
   return (
     <View style={styles.recapRow}>
@@ -303,16 +352,16 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingTop: 8,
   },
-  h1: { fontSize: 18, fontWeight: '800', color: colors.navy },
+  h1: { ...typo.h3, color: colors.navy },
   body: { padding: 20, gap: 12, paddingBottom: 32 },
   card: { backgroundColor: colors.card, borderRadius: radii.lg, padding: 14 },
   sectionRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 4 },
-  section: { fontSize: 16, fontWeight: '700', color: colors.navy, marginTop: 4 },
-  free: { fontSize: 12, fontWeight: '700', color: colors.success },
+  section: { ...typo.title, color: colors.navy, marginTop: 4 },
+  free: { ...typo.captionStrong, color: colors.success },
   legend: { flexDirection: 'row', gap: 14 },
   legendItem: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   legendBox: { width: 12, height: 12, borderRadius: 3 },
-  legendText: { fontSize: 12, color: colors.muted2 },
+  legendText: { ...typo.caption, color: colors.muted2 },
   busCard: { alignItems: 'center', gap: 8 },
   front: {
     flexDirection: 'row',
@@ -324,24 +373,24 @@ const styles = StyleSheet.create({
     borderRadius: radii.pill,
     marginBottom: 4,
   },
-  frontText: { fontSize: 11, color: colors.primary, fontWeight: '700' },
+  frontText: { ...typo.label, color: colors.primary },
   seatRow: { flexDirection: 'row', gap: 8 },
   seat: { width: 40, height: 40, borderRadius: radii.sm, alignItems: 'center', justifyContent: 'center' },
   afterAisle: { marginLeft: 28 },
   seatFree: { backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border },
   seatTaken: { backgroundColor: colors.border },
   seatSelected: { backgroundColor: colors.primary },
-  seatText: { fontSize: 13, fontWeight: '700', color: colors.navy },
+  seatText: { ...typo.smallStrong, color: colors.navy },
   picked: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   pickedSeat: { width: 44, height: 44, borderRadius: radii.sm, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center' },
-  pickedSeatText: { color: '#fff', fontWeight: '700', fontSize: 16 },
+  pickedSeatText: { ...typo.title, color: '#fff' },
   change: { color: colors.orangeText, fontWeight: '700' },
   seatActions: { flexDirection: 'row', gap: 10 },
   seatAction: {
     flex: 1,
     flexDirection: 'row',
     gap: 6,
-    height: 44,
+    minHeight: 44,
     borderRadius: radii.pill,
     alignItems: 'center',
     justifyContent: 'center',
@@ -349,51 +398,57 @@ const styles = StyleSheet.create({
     borderColor: colors.primary,
   },
   seatActionMain: { backgroundColor: colors.primary },
-  seatActionText: { fontSize: 14, fontWeight: '700', color: colors.primary },
+  seatActionText: { ...typo.bodyStrong, color: colors.primary },
   payment: { flexDirection: 'row', alignItems: 'center', gap: 12, borderWidth: 1.5, borderColor: 'transparent' },
   paymentOn: { borderColor: colors.primary },
   payName: { fontWeight: '700', color: colors.navy },
-  muted: { color: colors.muted2, fontSize: 12, marginTop: 1 },
+  muted: { ...typo.caption, color: colors.muted2, marginTop: 1 },
   radio: { width: 20, height: 20, borderRadius: 10, borderWidth: 1.5, borderColor: colors.border },
   recapTitle: { fontWeight: '700', color: colors.navy, marginBottom: 2 },
   recapRow: { flexDirection: 'row', justifyContent: 'space-between' },
-  recapKey: { color: colors.muted2, fontSize: 13 },
+  recapKey: { ...typo.small, color: colors.muted2 },
   recapValue: { color: colors.navy, fontSize: 13, fontWeight: '600' },
   divider: { height: 1, backgroundColor: colors.border, marginVertical: 4 },
   totalLabel: { fontWeight: '700', color: colors.navy },
-  totalValue: { fontWeight: '700', color: colors.primary, fontSize: 16 },
+  totalValue: { ...typo.title, color: colors.primary },
   pay: {
     flexDirection: 'row',
     gap: 8,
     backgroundColor: colors.accent,
-    height: 52,
+    minHeight: 52,
     borderRadius: radii.pill,
     alignItems: 'center',
     justifyContent: 'center',
     marginTop: 4,
   },
   payDisabled: { backgroundColor: colors.tabInactive },
-  payText: { color: '#fff', fontWeight: '700', fontSize: 15 },
-  note: { textAlign: 'center', color: colors.muted2, fontSize: 12 },
+  payText: { ...typo.title, color: '#fff' },
+  note: { ...typo.caption, textAlign: 'center', color: colors.muted2 },
   guarantee: { flexDirection: 'row', alignItems: 'flex-start', gap: 8 },
-  guaranteeText: { flex: 1, fontSize: 13, color: colors.text, lineHeight: 18 },
-  stops: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  guaranteeText: { ...typo.small, flex: 1, color: colors.text, lineHeight: 18 },
   already: { alignItems: 'center', gap: 8, paddingVertical: 20 },
-  alreadyTitle: { fontSize: 16, fontWeight: '700', color: colors.navy, textAlign: 'center' },
-  alreadyText: { fontSize: 13, color: colors.muted2, textAlign: 'center', lineHeight: 18 },
-  alreadyBtn: { marginTop: 6, backgroundColor: colors.accent, paddingHorizontal: 22, height: 42, borderRadius: radii.pill, justifyContent: 'center' },
+  alreadyTitle: { ...typo.title, color: colors.navy, textAlign: 'center' },
+  alreadyText: { ...typo.small, color: colors.muted2, textAlign: 'center', lineHeight: 18 },
+  alreadyBtn: { marginTop: 6, backgroundColor: colors.accent, paddingHorizontal: 22, minHeight: 42, borderRadius: radii.pill, justifyContent: 'center' },
   alreadyBtnText: { color: '#fff', fontWeight: '700' },
-  stop: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    paddingHorizontal: 14,
-    height: 38,
-    borderRadius: radii.pill,
+  stopList: { paddingVertical: 4, paddingHorizontal: 0 },
+  stopRow: { flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 48, paddingRight: 14 },
+  stopRowOn: { backgroundColor: colors.primarySoft },
+  rail: { width: 34, alignSelf: 'stretch', alignItems: 'center' },
+  railLine: { flex: 1, width: 2, backgroundColor: colors.border },
+  railDot: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    borderWidth: 2,
+    borderColor: colors.muted,
     backgroundColor: colors.card,
-    borderWidth: 1,
-    borderColor: colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  stopOn: { backgroundColor: colors.primary, borderColor: colors.primary },
-  stopText: { fontSize: 13, fontWeight: '700', color: colors.navy },
+  railDotOn: { borderColor: colors.primary, backgroundColor: colors.primary },
+  stopPlace: { ...typo.body, flex: 1, color: colors.text, paddingVertical: 10 },
+  stopPlaceOn: { fontWeight: '700', color: colors.navy },
+  stopTime: { ...typo.smallStrong, color: colors.muted2, fontVariant: ['tabular-nums'] },
+  stopHint: { ...typo.caption, color: colors.muted2, lineHeight: 17 },
 });

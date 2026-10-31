@@ -13,6 +13,8 @@ const icons: Record<string, keyof typeof Ionicons.glyphMap> = {
   profil: 'person-outline',
 };
 
+const TITLES: Record<string, string> = { index: 'Accueil', resto: 'Manger', caravanes: 'Trajets', lieux: 'Campus', profil: 'Profil' };
+
 const activeIcons: Record<string, keyof typeof Ionicons.glyphMap> = {
   index: 'home',
   resto: 'restaurant',
@@ -33,17 +35,18 @@ export default function TabLayout() {
         tabBarActiveTintColor: colors.primary,
         tabBarInactiveTintColor: colors.tabInactive,
         tabBarStyle: [styles.bar, { height: 62 + bottom, paddingBottom: bottom }],
+        tabBarLabel: ({ focused, color }) => Label(TITLES[route.name] ?? route.name, focused, String(color)),
         tabBarLabelStyle: styles.label,
         tabBarIcon: ({ focused, color }) => {
           const name = focused ? activeIcons[route.name] : icons[route.name];
           return (
             <View style={[styles.iconWrap, focused && styles.iconOn]}>
-              <Ionicons name={name ?? 'ellipse-outline'} size={22} color={color} />
+              <Ionicons name={name ?? 'ellipse-outline'} size={22} color={String(color)} />
             </View>
           );
         },
       })}>
-      <Tabs.Screen name="index" options={{ title: 'Accueil', tabBarLabel: ({ focused, color }) => Label('Accueil', focused, color) }} />
+      <Tabs.Screen name="index" options={{ title: 'Accueil' }} />
       {/* Route names stay the same so existing links keep working; labels follow the new structure. */}
       <Tabs.Screen name="resto" options={{ title: 'Manger' }} />
       <Tabs.Screen name="caravanes" options={{ title: 'Trajets' }} />
@@ -54,7 +57,12 @@ export default function TabLayout() {
 }
 
 function Label(title: string, focused: boolean, color: string) {
-  return <Text style={[styles.label, { color, fontWeight: focused ? '700' : '500' }]}>{title}</Text>;
+  // Grows with the system text size, up to 130 %: the bar has a fixed height.
+  return (
+    <Text style={[styles.label, { color, fontWeight: focused ? '700' : '500' }]} maxFontSizeMultiplier={1.3} numberOfLines={1}>
+      {title}
+    </Text>
+  );
 }
 
 const styles = StyleSheet.create({

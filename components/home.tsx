@@ -26,7 +26,7 @@ import {
   weekDays,
   type DishStatus,
 } from '@/constants/data';
-import { colors, radii, shadow } from '@/constants/theme';
+import { colors, radii, shadow, typo } from '@/constants/theme';
 import { useTaxi } from '@/context/TaxiContext';
 
 const BODY_PADDING = 20;
@@ -162,7 +162,7 @@ export function CaravanCard() {
       <Pressable style={[styles.infoCard, shadow.card]} onPress={() => router.push({ pathname: '/(tabs)/caravanes', params: { vue: 'caravanes' } })}>
         <View style={styles.rowBetween}>
           <View style={styles.label}>
-            <Ionicons name="bus" size={12} color={colors.primary} />
+            <Ionicons name="bus-outline" size={12} color={colors.primary} />
             <Text style={styles.labelText}>CARAVANES</Text>
           </View>
           <Ionicons name="chevron-forward" size={14} color={colors.muted} />
@@ -179,7 +179,7 @@ export function CaravanCard() {
       {/* What + when */}
       <View style={styles.rowBetween}>
         <View style={styles.label}>
-          <Ionicons name="bus" size={12} color={colors.primary} />
+          <Ionicons name="bus-outline" size={12} color={colors.primary} />
           <Text style={styles.labelText}>PROCHAINE CARAVANE</Text>
         </View>
         <Text style={[styles.timeLeft, urgent && { color: colors.orangeText }]}>
@@ -265,7 +265,7 @@ export function TaxiCard() {
     <View style={[styles.infoCard, shadow.card]}>
       <View style={styles.rowBetween}>
         <View style={styles.label}>
-          <Ionicons name="car" size={12} color={colors.primary} />
+          <Ionicons name="car-outline" size={12} color={colors.primary} />
           <Text style={styles.labelText}>SUNU TAXI</Text>
         </View>
         {next && <Text style={styles.timeLeft}>{formatTimeLeft(next.departureAt - now)}</Text>}
@@ -379,8 +379,8 @@ export function RestoCard() {
     <View style={[styles.infoCard, shadow.card]}>
       <View style={styles.rowBetween}>
         <View style={styles.label}>
-          <Ionicons name="restaurant" size={12} color={colors.primary} />
-          <Text style={styles.labelText}>RESTO U · {meal.label.toUpperCase()}</Text>
+          <Ionicons name="restaurant-outline" size={12} color={colors.primary} />
+          <Text style={styles.labelText}>RESTOS PUBLICS · {meal.label.toUpperCase()}</Text>
         </View>
         <Text style={[styles.mealStatus, { color: meal.live ? colors.successText : colors.muted2 }]}>{meal.status}</Text>
       </View>
@@ -420,8 +420,8 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     paddingHorizontal: 14,
   },
-  alertTitle: { fontWeight: '700', fontSize: 14, color: colors.navy },
-  alertSub: { fontSize: 12, color: colors.muted2, marginTop: 2 },
+  alertTitle: { ...typo.bodyStrong, color: colors.navy },
+  alertSub: { ...typo.caption, color: colors.muted2, marginTop: 2 },
 
   bannerTrack: { borderRadius: radii.lg },
   banner: {
@@ -456,9 +456,9 @@ const styles = StyleSheet.create({
     paddingVertical: 3,
     borderRadius: radii.pill,
   },
-  tagText: { color: '#fff', fontSize: 10, fontWeight: '700', letterSpacing: 0.3 },
-  bannerTitle: { color: '#fff', fontSize: 19, fontWeight: '800', lineHeight: 23 },
-  bannerSub: { color: 'rgba(255,255,255,0.9)', fontSize: 12, marginTop: 4 },
+  tagText: { ...typo.label, color: '#fff', letterSpacing: 0.3 },
+  bannerTitle: { ...typo.h3, color: '#fff', lineHeight: 23 },
+  bannerSub: { ...typo.caption, color: 'rgba(255,255,255,0.9)', marginTop: 4 },
   bannerBtn: {
     position: 'absolute',
     right: 16,
@@ -468,7 +468,7 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     borderRadius: radii.pill,
   },
-  bannerBtnText: { fontWeight: '700', fontSize: 12 },
+  bannerBtnText: { ...typo.captionStrong },
   dots: { flexDirection: 'row', justifyContent: 'center', gap: 6 },
   dotItem: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#C9D0E2' },
   dotOn: { width: 18, backgroundColor: colors.primary },
@@ -476,10 +476,10 @@ const styles = StyleSheet.create({
   infoCard: { backgroundColor: colors.card, borderRadius: radii.md, padding: 12, gap: 6 },
   rowBetween: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
   label: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  labelText: { fontSize: 10, fontWeight: '700', color: colors.muted2, letterSpacing: 0.4 },
-  timeLeft: { fontSize: 11, fontWeight: '700', color: colors.primary },
+  labelText: { ...typo.label, color: colors.muted2, letterSpacing: 0.4 },
+  timeLeft: { ...typo.label, color: colors.primary },
   route: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  city: { fontSize: 15, fontWeight: '700', color: colors.navy },
+  city: { ...typo.title, color: colors.navy },
   link: {
     width: 22,
     height: 22,
@@ -488,7 +488,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  detail: { fontSize: 12, color: colors.muted2 },
+  detail: { ...typo.caption, color: colors.muted2 },
   seats: { fontSize: 12, fontWeight: '600', color: colors.successText },
   more: {
     flexDirection: 'row',
@@ -499,24 +499,24 @@ const styles = StyleSheet.create({
     paddingTop: 8,
     marginTop: 2,
   },
-  moreText: { fontSize: 11, fontWeight: '700', color: colors.primary },
-  mealStatus: { fontSize: 11, fontWeight: '700' },
+  moreText: { ...typo.label, color: colors.primary },
+  mealStatus: { ...typo.label },
   courseTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  courseTitle: { flexShrink: 1, fontSize: 13, fontWeight: '700', color: colors.navy },
+  courseTitle: { ...typo.smallStrong, flexShrink: 1, color: colors.navy },
   kind: { backgroundColor: '#EEE8FF', paddingHorizontal: 6, paddingVertical: 2, borderRadius: radii.pill },
   kindMoved: { backgroundColor: colors.warningBg },
-  kindText: { fontSize: 10, fontWeight: '700', color: colors.purpleText },
+  kindText: { ...typo.label, color: colors.purpleText },
   restoRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  restoName: { width: 54, fontSize: 12, fontWeight: '700', color: colors.navy },
-  dishLine: { flex: 1, fontSize: 12, color: colors.text },
+  restoName: { ...typo.captionStrong, width: 54, color: colors.navy },
+  dishLine: { ...typo.caption, flex: 1, color: colors.text },
   dishDot: { fontSize: 9 },
   cta: {
     backgroundColor: colors.accent,
-    height: 32,
+    minHeight: 32,
     paddingHorizontal: 16,
     borderRadius: radii.pill,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  ctaText: { color: '#fff', fontWeight: '700', fontSize: 13 },
+  ctaText: { ...typo.smallStrong, color: '#fff' },
 });

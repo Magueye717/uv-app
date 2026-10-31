@@ -4,7 +4,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { OtpInput } from '@/components/OtpInput';
 import { PrimaryButton } from '@/components/ui';
-import { colors, radii } from '@/constants/theme';
+import { colors, radii, typo } from '@/constants/theme';
 import { DEV_OTP, maskEmail, OTP_LENGTH, OTP_RESEND_DELAY_S, sendOtp, verifyOtp, type OtpChannel } from './auth';
 import { formatPhone, PHONE_PREFIX } from './validation';
 
@@ -180,13 +180,13 @@ export function StepOtp({ phone, linkedEmail, verified, onEditPhone, onVerified,
 }
 
 const styles = StyleSheet.create({
-  intro: { fontSize: 15, lineHeight: 22, color: colors.muted2 },
+  intro: { ...typo.body, lineHeight: 22, color: colors.muted2 },
   strong: { fontWeight: '700', color: colors.text },
-  link: { fontSize: 14, fontWeight: '700', color: colors.orangeText },
-  muted: { fontSize: 14, color: colors.muted2, textAlign: 'center' },
+  link: { ...typo.bodyStrong, color: colors.orangeText },
+  muted: { ...typo.body, color: colors.muted2, textAlign: 'center' },
   error: { fontSize: 13, fontWeight: '600', color: colors.danger, textAlign: 'center' },
-  notice: { fontSize: 13, color: colors.success, textAlign: 'center' },
-  dev: { fontSize: 12, color: colors.muted2, textAlign: 'center' },
+  notice: { ...typo.small, color: colors.success, textAlign: 'center' },
+  dev: { ...typo.caption, color: colors.muted2, textAlign: 'center' },
   alternatives: { alignSelf: 'stretch', gap: 10 },
   alt: {
     flexDirection: 'row',
@@ -200,7 +200,7 @@ const styles = StyleSheet.create({
   },
   altIcon: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
   altText: { flex: 1, fontSize: 14, fontWeight: '600', color: colors.text },
-  altSub: { fontSize: 12, color: colors.muted2, marginTop: 2 },
+  altSub: { ...typo.caption, color: colors.muted2, marginTop: 2 },
   success: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -217,5 +217,5 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  successTitle: { fontSize: 15, fontWeight: '700', color: colors.text },
+  successTitle: { ...typo.title, color: colors.text },
 });

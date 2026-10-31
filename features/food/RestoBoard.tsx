@@ -5,8 +5,9 @@ import { Image } from 'expo-image';
 import { Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { FilterChips } from '@/components/ui';
+import { EmptyState } from '@/components/states';
 import { formatFcfa, privateCampuses, restoStatus, type PrivateResto } from '@/constants/data';
-import { colors, radii, shadow } from '@/constants/theme';
+import { colors, radii, shadow, typo } from '@/constants/theme';
 import { useNow } from '@/lib/useNow';
 
 const FILTERS = ['Campus 1', 'Campus 2', 'Tous'] as const;
@@ -18,7 +19,7 @@ const MAX_MENUS = 3;
 
 type ListedResto = PrivateResto & { campus: string; status: ReturnType<typeof restoStatus> };
 
-// Private restaurants with their menus of the day. Public Resto U menus are on the home screen.
+// Private restaurants with their menus of the day. Public restaurants are in RestoUBoard (Manger › Restos publics).
 /** Screen content without header or safe area: used by a tab and by its standalone page. */
 export function RestoBoard() {
   const now = useNow();
@@ -49,10 +50,12 @@ export function RestoBoard() {
         </View>
 
         {restaurants.length === 0 && (
-          <View style={styles.empty}>
-            <Ionicons name="restaurant-outline" size={28} color={colors.muted} />
-            <Text style={styles.emptyText}>Aucun restaurant pour ce filtre.</Text>
-          </View>
+          <EmptyState
+            icon="restaurant-outline"
+            title="Aucun restaurant ici"
+            text="Essaie l’autre campus ou affiche tout."
+            action={{ label: 'Voir tous les restos', onPress: () => setFilter('Tous') }}
+          />
         )}
 
         {restaurants.map((r) => (
@@ -122,7 +125,7 @@ function RestoCard({ resto: r }: { resto: ListedResto }) {
               accessibilityRole="link"
               accessibilityLabel={`Appeler ${r.name}`}
               onPress={() => Linking.openURL(`tel:${r.phone.replace(/\s/g, '')}`)}>
-              <Ionicons name="call" size={16} color={colors.primary} />
+              <Ionicons name="call-outline" size={16} color={colors.primary} />
             </Pressable>
           </View>
 
@@ -158,16 +161,14 @@ const styles = StyleSheet.create({
   body: { padding: 20, paddingTop: 16, gap: 14, paddingBottom: 32 },
   summary: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   summaryText: { fontSize: 13, fontWeight: '600', color: colors.muted2 },
-  empty: { alignItems: 'center', gap: 8, paddingVertical: 32 },
-  emptyText: { color: colors.muted2 },
   card: { backgroundColor: colors.card, borderRadius: radii.lg },
   clip: { borderRadius: radii.lg, overflow: 'hidden' },
   pressed: { transform: [{ scale: 0.99 }] },
   cover: { height: 100, alignItems: 'center', justifyContent: 'center' },
   content: { padding: 12, gap: 10 },
   head: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  name: { fontSize: 16, fontWeight: '700', color: colors.navy },
-  sub: { flexShrink: 1, fontSize: 12, color: colors.muted2 },
+  name: { ...typo.title, color: colors.navy },
+  sub: { ...typo.caption, flexShrink: 1, color: colors.muted2 },
   delivery: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 3 },
   deliveryText: { fontSize: 12, fontWeight: '600', color: colors.primary },
   // White pills on the photo so they stay readable on any image.
@@ -197,18 +198,18 @@ const styles = StyleSheet.create({
     backgroundColor: colors.accent,
   },
   orderClosed: { backgroundColor: colors.card },
-  orderText: { fontSize: 13, fontWeight: '700', color: '#fff' },
-  pillText: { fontSize: 11, fontWeight: '700' },
+  orderText: { ...typo.smallStrong, color: '#fff' },
+  pillText: { ...typo.label },
   dot: { width: 7, height: 7, borderRadius: 4 },
   menus: { backgroundColor: colors.input, borderRadius: radii.sm, paddingHorizontal: 10, paddingVertical: 8 },
   menusHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 2 },
-  menusTitle: { fontSize: 11, fontWeight: '700', color: colors.muted2, textTransform: 'uppercase', letterSpacing: 0.6 },
-  from: { fontSize: 12, fontWeight: '700', color: colors.navy },
+  menusTitle: { ...typo.label, color: colors.muted2, textTransform: 'uppercase', letterSpacing: 0.6 },
+  from: { ...typo.captionStrong, color: colors.navy },
   menuRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 6 },
   menuDivider: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border },
-  menuName: { flex: 1, fontSize: 14, fontWeight: '700', color: colors.text },
-  menuDetail: { fontSize: 12, fontWeight: '400', color: colors.muted2 },
-  price: { fontSize: 14, fontWeight: '700', color: colors.primary },
+  menuName: { ...typo.bodyStrong, flex: 1, color: colors.text },
+  menuDetail: { ...typo.caption, color: colors.muted2 },
+  price: { ...typo.bodyStrong, color: colors.primary },
   more: { fontSize: 12, fontWeight: '600', color: colors.muted2, paddingTop: 4 },
   call: {
     width: 36,

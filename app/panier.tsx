@@ -2,15 +2,16 @@ import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import { router } from 'expo-router';
 import { useState } from 'react';
-import { Alert, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { BackButton, Field, PrimaryButton, Segmented } from '@/components/ui';
 import { findPrivateResto, formatFcfa, paymentMethods, restoStatus } from '@/constants/data';
 import { PaymentLogo } from '@/components/PaymentLogo';
-import { colors, radii, shadow } from '@/constants/theme';
+import { colors, radii, shadow, typo } from '@/constants/theme';
 import { useAuth } from '@/context/AuthContext';
 import { useCart } from '@/context/CartContext';
+import { useOrders } from '@/context/OrdersContext';
 import { useNow } from '@/lib/useNow';
 
 type Mode = 'delivery' | 'pickup';
@@ -20,6 +21,7 @@ const PAYMENTS = [...paymentMethods, { id: 'cash', name: 'Espèces', detail: 'Pa
 
 export default function Panier() {
   const cart = useCart();
+  const orders = useOrders();
   const now = useNow();
   const { resto } = findPrivateResto(cart.restoId);
   const status = restoStatus(resto.services, now);
@@ -48,21 +50,20 @@ export default function Panier() {
   const back = () => (router.canGoBack() ? router.back() : router.replace({ pathname: '/(tabs)/resto', params: { vue: 'restos' } }));
 
   const order = () => {
-    const method = PAYMENTS.find((p) => p.id === payment)!;
-    const handOver = delivery ? 'à la livraison' : 'au retrait';
-    const message =
-      method.id === 'cash'
-        ? `Prépare ${formatFcfa(total)} ${handOver}. ${resto.name} commence ta commande.`
-        : `Valide le paiement de ${formatFcfa(total)} sur ${method.name}. ${resto.name} commence ta commande dès réception.`;
-    Alert.alert('Commande envoyée', message, [
-      {
-        text: 'OK',
-        onPress: () => {
-          cart.clear();
-          router.dismissTo({ pathname: '/(tabs)/resto', params: { vue: 'restos' } });
-        },
-      },
-    ]);
+    // A real order with its own tracking screen, instead of a message that disappears.
+    const id = orders.place({
+      restoId: resto.id,
+      lines: lines.map((l) => ({ id: l.id, name: l.name, qty: l.qty, price: l.price })),
+      subtotal,
+      fee,
+      total,
+      mode,
+      address: delivery ? address.trim() : undefined,
+      note: note.trim() || undefined,
+      paymentId: payment,
+    });
+    cart.clear();
+    router.replace(`/commande/${id}`);
   };
 
   if (!cart.count) {
@@ -250,42 +251,42 @@ function RecapRow({ k, v }: { k: string; v: string }) {
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
   head: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingTop: 8 },
-  h1: { fontSize: 18, fontWeight: '800', color: colors.navy },
+  h1: { ...typo.h3, color: colors.navy },
   body: { padding: 20, gap: 12, paddingBottom: 40 },
   card: { backgroundColor: colors.card, borderRadius: radii.lg, padding: 14 },
-  section: { fontSize: 16, fontWeight: '700', color: colors.navy, marginTop: 6 },
-  muted: { color: colors.muted2, fontSize: 12, marginTop: 1 },
+  section: { ...typo.title, color: colors.navy, marginTop: 6 },
+  muted: { ...typo.caption, color: colors.muted2, marginTop: 1 },
   resto: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   restoPhoto: { width: 52, height: 52, borderRadius: radii.sm, overflow: 'hidden', alignItems: 'center', justifyContent: 'center' },
-  restoName: { fontSize: 16, fontWeight: '700', color: colors.navy },
+  restoName: { ...typo.title, color: colors.navy },
   status: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 3 },
   dot: { width: 7, height: 7, borderRadius: 4 },
-  statusText: { fontSize: 12, fontWeight: '700' },
+  statusText: { ...typo.captionStrong },
   line: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 10 },
   lineDivider: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border },
   thumb: { width: 48, height: 48, borderRadius: radii.sm, overflow: 'hidden', alignItems: 'center', justifyContent: 'center' },
-  lineName: { fontSize: 14, fontWeight: '700', color: colors.text },
-  linePrice: { fontSize: 13, fontWeight: '700', color: colors.primary, marginTop: 2 },
-  addMore: { fontSize: 14, fontWeight: '700', color: colors.primary },
+  lineName: { ...typo.bodyStrong, color: colors.text },
+  linePrice: { ...typo.smallStrong, color: colors.primary, marginTop: 2 },
+  addMore: { ...typo.bodyStrong, color: colors.primary },
   stepper: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   // 32 px visible, 48 px to the touch with hitSlop.
   stepMinus: { width: 32, height: 32, borderRadius: 16, backgroundColor: colors.bg, alignItems: 'center', justifyContent: 'center' },
   stepPlus: { width: 32, height: 32, borderRadius: 16, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center' },
   qty: { fontWeight: '700', color: colors.navy, minWidth: 14, textAlign: 'center' },
   info: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 4 },
-  infoText: { flex: 1, fontSize: 13, color: colors.muted2 },
+  infoText: { ...typo.small, flex: 1, color: colors.muted2 },
   payment: { flexDirection: 'row', alignItems: 'center', gap: 12, borderWidth: 1.5, borderColor: 'transparent' },
   paymentOn: { borderColor: colors.primary },
-  payName: { fontSize: 15, fontWeight: '700', color: colors.navy },
+  payName: { ...typo.title, color: colors.navy },
   radio: { width: 22, height: 22, borderRadius: 11, borderWidth: 2, borderColor: colors.border },
   recapRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  recapKey: { fontSize: 14, color: colors.muted2 },
-  recapValue: { fontSize: 14, fontWeight: '700', color: colors.text },
+  recapKey: { ...typo.body, color: colors.muted2 },
+  recapValue: { ...typo.bodyStrong, color: colors.text },
   divider: { height: 1, backgroundColor: colors.border, marginVertical: 2 },
-  totalLabel: { fontSize: 16, fontWeight: '700', color: colors.navy },
-  totalValue: { fontSize: 18, fontWeight: '800', color: colors.primary },
+  totalLabel: { ...typo.title, color: colors.navy },
+  totalValue: { ...typo.h3, color: colors.primary },
   empty: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 10, padding: 32 },
   emptyIcon: { width: 72, height: 72, borderRadius: 36, backgroundColor: colors.primarySoft, alignItems: 'center', justifyContent: 'center', marginBottom: 6 },
-  emptyTitle: { fontSize: 18, fontWeight: '800', color: colors.navy },
-  emptyText: { fontSize: 14, color: colors.muted2, textAlign: 'center', marginBottom: 10 },
+  emptyTitle: { ...typo.h3, color: colors.navy },
+  emptyText: { ...typo.body, color: colors.muted2, textAlign: 'center', marginBottom: 10 },
 });

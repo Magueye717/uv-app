@@ -10,7 +10,7 @@ export default function CampusScreen() {
       title="Campus"
       views={[
         { key: 'lieux', label: 'Lieux', subtitle: 'Les endroits à connaître', render: () => <PlacesBoard /> },
-        { key: 'objets', label: 'Objets', subtitle: 'Perdus et trouvés sur le campus', render: () => <LostBoard /> },
+        { key: 'objets', label: 'Objets perdus', subtitle: 'Perdus et trouvés sur le campus', render: () => <LostBoard /> },
         { key: 'bourses', label: 'Bourses', subtitle: 'Paiements et calendrier', render: () => <BoursesBoard /> },
       ]}
     />

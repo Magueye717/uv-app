@@ -174,10 +174,15 @@ export type Caravan = {
   from: string;
   to: string;
   date: string;
+  /** Leaves the first pickup point at this time. */
   time: string;
-  meetingPoint: string;
-  /** Where the bus can drop students at arrival (at least one). */
-  stops: string[];
+  /**
+   * Where students can get on, in route order, with the bus's scheduled time at each.
+   * The first one is the departure: its time is `time`.
+   */
+  pickups: CaravanStop[];
+  /** Where students can get off, in route order. Times are estimates: traffic decides. */
+  dropoffs: CaravanStop[];
   departureAt: number;
   /** Free seats. */
   seats: number;
@@ -190,18 +195,118 @@ export type Caravan = {
   price: number;
 };
 
-const dakarStops = ['UCAD', 'Colobane', 'Patte d’Oie'];
+/** A pickup or drop-off point and the bus's time there ("06h15"). */
+export type CaravanStop = { place: string; time: string };
+
+const ugbPickups: CaravanStop[] = [
+  { place: 'UGB · Village E', time: '' },
+  { place: 'UGB · Entrée principale', time: '+10' },
+  { place: 'Saint-Louis · Gare routière', time: '+40' },
+];
+const toDakar: CaravanStop[] = [
+  { place: 'Louga · Station Total', time: '+130' },
+  { place: 'Kébémer · Carrefour', time: '+160' },
+  { place: 'Tivaouane · EDK', time: '+210' },
+  { place: 'Thiès · Mairie', time: '+240' },
+  { place: 'Rufisque · En face Sococim', time: '+290' },
+  { place: 'Dakar · Patte d’Oie', time: '+320' },
+  { place: 'Dakar · Colobane', time: '+335' },
+];
+const fromDakar: CaravanStop[] = [
+  { place: 'Dakar · École normale', time: '' },
+  { place: 'Pikine · Station Total Bountou', time: '+30' },
+  { place: 'Fass Mbao · Arrêt ICS', time: '+45' },
+  { place: 'Rufisque · En face Sococim', time: '+70' },
+  { place: 'Diamniadio · Hôpital des enfants', time: '+90' },
+  { place: 'Thiès · Mairie', time: '+135' },
+  { place: 'Tivaouane · EDK', time: '+165' },
+  { place: 'Louga · Station Total', time: '+225' },
+];
+const toUgb: CaravanStop[] = [
+  { place: 'UGB · Entrée principale', time: '+300' },
+  { place: 'UGB · Village E', time: '+310' },
+];
+
+/** Mock schedules: offsets in minutes ("+40") from the departure time become clock times ("15h30"). */
+function timetable(time: string, stops: CaravanStop[]): CaravanStop[] {
+  const start = toMinutes(time);
+  return stops.map((s) => ({ place: s.place, time: fromMinutes(start + Number(s.time || 0)) }));
+}
+
+const toMinutes = (t: string) => {
+  const [h, m] = t.split('h').map(Number);
+  return h * 60 + (m || 0);
+};
+const fromMinutes = (n: number) => {
+  const m = ((n % 1440) + 1440) % 1440;
+  return `${String(Math.floor(m / 60)).padStart(2, '0')}h${String(m % 60).padStart(2, '0')}`;
+};
+
+/** When the bus reaches this stop: departure plus the scheduled gap (crosses midnight if needed). */
+export function stopDepartureAt(c: Pick<Caravan, 'time' | 'departureAt'>, stop: CaravanStop) {
+  const gap = (toMinutes(stop.time) - toMinutes(c.time) + 1440) % 1440;
+  return c.departureAt + gap * 60_000;
+}
 
 export const caravans: Caravan[] = [
-  { id: 'c1', organizer: organizers.khoule, vehicle: { label: 'Bus 64 places', plate: 'DK-4821-BF' }, direction: 'aller', from: 'UGB', to: 'Dakar', date: 'Mer. 03 sept', time: '14h50', meetingPoint: 'Devant village E', stops: ['ENS · Fann'], departureAt: inDays(2, 4, 37), seats: 30, totalSeats: 64, minPassengers: 40, confirmBy: inDays(1, 4), price: 3500 },
-  { id: 'c8', organizer: organizers.ndar, vehicle: { label: 'Minibus 30 places', plate: 'SL-2207-AC' }, direction: 'aller', from: 'UGB', to: 'Dakar', date: 'Mer. 03 sept', time: '15h30', meetingPoint: 'Entrée principale', stops: dakarStops, departureAt: inDays(2, 5, 17), seats: 18, totalSeats: 30, minPassengers: 22, confirmBy: inDays(1, 5), price: 3000 },
-  { id: 'c2', organizer: organizers.globe, vehicle: { label: 'Bus 64 places', plate: 'DK-7710-AZ' }, direction: 'aller', from: 'UGB', to: 'Ziguinchor', date: 'Mer. 03 sept', time: '14h50', meetingPoint: 'Devant village E', stops: ['Gare routière'], departureAt: inDays(2, 5), seats: 15, totalSeats: 64, minPassengers: 40, confirmBy: inDays(1, 5), price: 3500 },
-  { id: 'c7', organizer: organizers.amicaleZig, vehicle: { label: 'Bus 60 places', plate: 'ZG-1934-BC' }, direction: 'aller', from: 'UGB', to: 'Ziguinchor', date: 'Jeu. 04 sept', time: '06h00', meetingPoint: 'Devant village A', stops: ['Gare routière', 'Boucotte', 'Lyndiane'], departureAt: inDays(3, 1), seats: 34, totalSeats: 60, minPassengers: 40, confirmBy: inDays(2, 1), price: 3200 },
-  { id: 'c3', organizer: organizers.khoule, vehicle: { label: 'Bus 64 places', plate: 'DK-4821-BF' }, direction: 'retour', from: 'Dakar', to: 'UGB', date: 'Dim. 07 sept', time: '16h30', meetingPoint: 'Gare des Baux Maraîchers', stops: ['Village E'], departureAt: inDays(6, 6), seats: 22, totalSeats: 64, minPassengers: 40, confirmBy: inDays(5, 6), price: 3500 },
-  { id: 'c4', organizer: organizers.globe, vehicle: { label: 'Bus 64 places', plate: 'DK-7710-AZ' }, direction: 'retour', from: 'Ziguinchor', to: 'UGB', date: 'Dim. 07 sept', time: '08h00', meetingPoint: 'Gare routière', stops: ['Village E'], departureAt: inDays(5, 22), seats: 6, totalSeats: 64, minPassengers: 40, confirmBy: inDays(4, 22), price: 3500 },
-  { id: 'c5', organizer: organizers.globe, vehicle: { label: 'Bus 64 places', plate: 'DK-7710-AZ' }, direction: 'aller', from: 'UGB', to: 'Dakar', date: 'Ven. 05 sept', time: '07h30', meetingPoint: 'Devant village E', stops: ['ENS · Fann', 'Colobane'], departureAt: inDays(4, 1), seats: 41, totalSeats: 64, minPassengers: 40, confirmBy: inDays(3, 1), price: 3500 },
-  { id: 'c6', organizer: organizers.khoule, vehicle: { label: 'Bus 64 places', plate: 'DK-5502-BF' }, direction: 'aller', from: 'UGB', to: 'Kaolack', date: 'Sam. 06 sept', time: '10h00', meetingPoint: 'Entrée principale', stops: ['Gare routière'], departureAt: inDays(5, 3), seats: 18, totalSeats: 64, minPassengers: 40, confirmBy: inDays(4, 3), price: 3000 },
+  { id: 'c1', organizer: organizers.khoule, vehicle: { label: 'Bus 64 places', plate: 'DK-4821-BF' }, direction: 'aller', from: 'UGB', to: 'Dakar', date: 'Mer. 03 sept', time: '14h50', pickups: timetable('14h50', ugbPickups), dropoffs: timetable('14h50', toDakar), departureAt: inDays(2, 4, 37), seats: 30, totalSeats: 64, minPassengers: 40, confirmBy: inDays(1, 4), price: 3500 },
+  { id: 'c8', organizer: organizers.ndar, vehicle: { label: 'Minibus 30 places', plate: 'SL-2207-AC' }, direction: 'aller', from: 'UGB', to: 'Dakar', date: 'Mer. 03 sept', time: '15h30', pickups: timetable('15h30', ugbPickups.slice(0, 2)), dropoffs: timetable('15h30', toDakar.slice(3)), departureAt: inDays(2, 5, 17), seats: 18, totalSeats: 30, minPassengers: 22, confirmBy: inDays(1, 5), price: 3000 },
+  { id: 'c2', organizer: organizers.globe, vehicle: { label: 'Bus 64 places', plate: 'DK-7710-AZ' }, direction: 'aller', from: 'UGB', to: 'Ziguinchor', date: 'Mer. 03 sept', time: '14h50', pickups: timetable('14h50', ugbPickups), dropoffs: timetable('14h50', [{ place: 'Kaolack · Gare routière', time: '+250' }, { place: 'Bignona · Carrefour', time: '+560' }, { place: 'Ziguinchor · Gare routière', time: '+600' }]), departureAt: inDays(2, 5), seats: 15, totalSeats: 64, minPassengers: 40, confirmBy: inDays(1, 5), price: 3500 },
+  { id: 'c7', organizer: organizers.amicaleZig, vehicle: { label: 'Bus 60 places', plate: 'ZG-1934-BC' }, direction: 'aller', from: 'UGB', to: 'Ziguinchor', date: 'Jeu. 04 sept', time: '06h00', pickups: timetable('06h00', ugbPickups.slice(0, 1)), dropoffs: timetable('06h00', [{ place: 'Ziguinchor · Gare routière', time: '+600' }, { place: 'Ziguinchor · Boucotte', time: '+615' }, { place: 'Ziguinchor · Lyndiane', time: '+625' }]), departureAt: inDays(3, 1), seats: 34, totalSeats: 60, minPassengers: 40, confirmBy: inDays(2, 1), price: 3200 },
+  { id: 'c3', organizer: organizers.khoule, vehicle: { label: 'Bus 64 places', plate: 'DK-4821-BF' }, direction: 'retour', from: 'Dakar', to: 'UGB', date: 'Dim. 07 sept', time: '16h30', pickups: timetable('16h30', fromDakar), dropoffs: timetable('16h30', toUgb), departureAt: inDays(6, 6), seats: 22, totalSeats: 64, minPassengers: 40, confirmBy: inDays(5, 6), price: 3500 },
+  { id: 'c4', organizer: organizers.globe, vehicle: { label: 'Bus 64 places', plate: 'DK-7710-AZ' }, direction: 'retour', from: 'Ziguinchor', to: 'UGB', date: 'Dim. 07 sept', time: '08h00', pickups: timetable('08h00', [{ place: 'Ziguinchor · Gare routière', time: '' }, { place: 'Bignona · Carrefour', time: '+40' }]), dropoffs: timetable('08h00', toUgb.map((s) => ({ ...s, time: '+600' }))), departureAt: inDays(5, 22), seats: 6, totalSeats: 64, minPassengers: 40, confirmBy: inDays(4, 22), price: 3500 },
+  { id: 'c5', organizer: organizers.globe, vehicle: { label: 'Bus 64 places', plate: 'DK-7710-AZ' }, direction: 'aller', from: 'UGB', to: 'Dakar', date: 'Ven. 05 sept', time: '07h30', pickups: timetable('07h30', ugbPickups), dropoffs: timetable('07h30', [toDakar[3], toDakar[5], toDakar[6]]), departureAt: inDays(4, 1), seats: 41, totalSeats: 64, minPassengers: 40, confirmBy: inDays(3, 1), price: 3500 },
+  { id: 'c6', organizer: organizers.khoule, vehicle: { label: 'Bus 64 places', plate: 'DK-5502-BF' }, direction: 'aller', from: 'UGB', to: 'Kaolack', date: 'Sam. 06 sept', time: '10h00', pickups: timetable('10h00', [{ place: 'UGB · Entrée principale', time: '' }]), dropoffs: timetable('10h00', [{ place: 'Louga · Station Total', time: '+130' }, { place: 'Diourbel · Gare routière', time: '+230' }, { place: 'Kaolack · Gare routière', time: '+290' }]), departureAt: inDays(5, 3), seats: 18, totalSeats: 64, minPassengers: 40, confirmBy: inDays(4, 3), price: 3000 },
 ];
+
+// Mock: spread the occupied seats across the bus, stable per caravan.
+export function takenSeats(id: string, total: number, free: number) {
+  const taken = new Set<number>();
+  let n = id.charCodeAt(id.length - 1) % total;
+  while (taken.size < total - free) {
+    n = (n + 7) % total; // 7 is coprime with 64, so every seat is reached
+    taken.add(n + 1);
+  }
+  return taken;
+}
+
+/** One line of the organizer's passenger list: what the driver needs at each stop. */
+export type Passenger = { ticket: string; name: string; phone: string; seat: number; pickup: CaravanStop; dropoff: CaravanStop };
+
+const FIRST = ['Awa', 'Moussa', 'Fatou', 'Ibrahima', 'Aminata', 'Cheikh', 'Mariama', 'Ousmane', 'Khady', 'Mamadou', 'Ndeye', 'Abdou', 'Coumba', 'Pape', 'Aïssatou', 'Babacar'];
+const LAST = ['Ndiaye', 'Fall', 'Sow', 'Diallo', 'Sarr', 'Ba', 'Gueye', 'Faye', 'Mbaye', 'Cissé', 'Thiam', 'Seck', 'Kane', 'Diouf'];
+
+/**
+ * Mock passenger list for the booked seats. Most students get on at the first stop and get off at the last;
+ * the others are spread along the route. Stable per caravan.
+ */
+export function caravanManifest(c: Caravan): Passenger[] {
+  const seats = [...takenSeats(c.id, c.totalSeats, c.seats)].sort((a, b) => a - b);
+  const pick = (stops: CaravanStop[], k: number, main: CaravanStop) => (k % 3 === 0 ? stops[k % stops.length] : main);
+  return seats.map((seat, i) => {
+    const k = seat * 7 + i;
+    return {
+      ticket: `T${c.id.toUpperCase()}${String(seat).padStart(2, '0')}`,
+      name: `${FIRST[k % FIRST.length]} ${LAST[(k * 3) % LAST.length]}`,
+      phone: `+221 7${k % 2 ? 7 : 8} ${String(100 + ((k * 37) % 900))} ${String(10 + (k % 89)).padStart(2, '0')} ${String(10 + ((k * 13) % 89)).padStart(2, '0')}`,
+      seat,
+      pickup: pick(c.pickups, k, c.pickups[0]),
+      dropoff: pick(c.dropoffs, k + 1, c.dropoffs[c.dropoffs.length - 1]),
+    };
+  });
+}
+
+/**
+ * Organizer accounts are created and verified on the web platform; the app only logs them in.
+ * Mock: these phone numbers (digits only, without +221) stand for accounts the platform created.
+ * - organizer: a company account, the app opens straight on the organizer space
+ * - both: a student who also runs trips or events, switches space from the profile
+ */
+export type DemoAccount = { kind: 'organizer' | 'both'; organizerId: keyof typeof organizers; firstName: string; lastName: string; initials: string };
+export const demoAccounts: Record<string, DemoAccount> = {
+  '770000001': { kind: 'organizer', organizerId: 'khoule', firstName: 'Modou', lastName: 'Khoulé', initials: 'MK' },
+  '770000002': { kind: 'both', organizerId: 'amicaleZig', firstName: 'Awa', lastName: 'Diop', initials: 'AD' },
+};
 
 /** Booked seats and whether the trip has enough passengers to go ahead. */
 export function caravanState(c: Caravan) {
@@ -244,8 +349,8 @@ export type PaymentMethod = {
 };
 
 export const paymentMethods: PaymentMethod[] = [
-  { id: 'wave', name: 'Wave', detail: 'Compte lié · 77 ••• •• 28', short: 'W', bg: '#1DC8F2' },
-  { id: 'om', name: 'Orange Money', detail: 'Paiement mobile instantané', short: 'OM', bg: '#FF7900' },
+  { id: 'wave', name: 'Wave', detail: 'Compte lié · 77 ••• •• 28', short: 'W', bg: '#1DC8F2', logo: require('@/assets/images/payments/wave.jpg') },
+  { id: 'om', name: 'Orange Money', detail: 'Paiement mobile instantané', short: 'OM', bg: '#FF7900', logo: require('@/assets/images/payments/orange-money.png') },
 ];
 
 export type DishStatus = 'available' | 'low' | 'critical';

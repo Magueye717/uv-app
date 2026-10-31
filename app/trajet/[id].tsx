@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { router, useLocalSearchParams } from 'expo-router';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   Alert,
   KeyboardAvoidingView,
@@ -18,9 +18,12 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { BackButton, Field, PrimaryButton } from '@/components/ui';
 import { TAXI_CHAT_HOURS, TAXI_LOCK_MIN, taxiQuickReplies, type TaxiMessage } from '@/constants/data';
-import { colors, radii } from '@/constants/theme';
+import { colors, radii, typo } from '@/constants/theme';
 import { useTaxi } from '@/context/TaxiContext';
 import { useNow } from '@/lib/useNow';
+
+// Same text as the quick reply in constants/data.ts.
+const CHECK_IN_REPLY = 'Je suis au point de rendez-vous';
 
 const time = (at: number) => {
   const d = new Date(at);
@@ -36,6 +39,12 @@ export default function TripChat() {
   const scroll = useRef<ScrollViewInstance>(null);
   const [text, setText] = useState('');
   const [pinning, setPinning] = useState(false);
+  const tripMessages = taxi.messages.filter((m) => m.tripId === id).length;
+  const { markRead } = taxi;
+  useEffect(() => {
+    if (id) markRead(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- re-run when a message arrives, not when the store object changes
+  }, [id, tripMessages]);
 
   const back = () => (router.canGoBack() ? router.back() : router.replace('/services/taxi'));
   const trip = taxi.trips.find((t) => t.id === id);
@@ -65,9 +74,15 @@ export default function TripChat() {
     ...(now >= lockAt ? [{ id: 'lock', tripId: trip.id, text: 'Places verrouillées 🔒', at: lockAt }] : []),
   ].sort((a, b) => a.at - b.at);
 
+  // Passengers check in at the meeting point; the organizer is the one waiting there.
+  const canCheckIn = !isOrganizer && !trip.departed && !trip.checkedIn.includes(me);
+  const needsCheckIn = canCheckIn && now >= lockAt;
+
   const send = (value: string) => {
     if (!value.trim() || closed) return;
-    taxi.send(trip.id, value);
+    // "I'm at the meeting point" checks in too: the chat then shows "Awa est là ✓" for everyone.
+    if (value === CHECK_IN_REPLY && canCheckIn) taxi.checkIn(trip.id);
+    else taxi.send(trip.id, value);
     setText('');
   };
 
@@ -115,7 +130,7 @@ export default function TripChat() {
           onPress={() => setPinning(true)}
           accessibilityRole={isOrganizer ? 'button' : undefined}
           accessibilityLabel={`Taxi : ${trip.taxi}`}>
-          <Ionicons name="car" size={18} color={colors.primary} />
+          <Ionicons name="car-outline" size={18} color={colors.primary} />
           <View style={{ flex: 1 }}>
             <Text style={styles.pinLabel}>Taxi</Text>
             <Text style={styles.pinText}>{trip.taxi}</Text>
@@ -130,6 +145,17 @@ export default function TripChat() {
             <Text style={styles.pinCta}>Indiquer le taxi (modèle, couleur, plaque)</Text>
           </Pressable>
         )
+      )}
+
+      {needsCheckIn && (
+        <View style={styles.checkIn} accessibilityLiveRegion="polite">
+          <Ionicons name="location-outline" size={18} color={colors.warningText} />
+          <Text style={styles.checkInText}>Tu es au point de rendez-vous ?</Text>
+          <Pressable style={styles.checkInBtn} onPress={() => taxi.checkIn(trip.id)} accessibilityRole="button">
+            <Ionicons name="hand-left-outline" size={14} color="#fff" />
+            <Text style={styles.checkInBtnText}>Je suis là</Text>
+          </Pressable>
+        </View>
       )}
 
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
@@ -276,11 +302,26 @@ function PinSheet({
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
   head: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 20, paddingTop: 8, paddingBottom: 10 },
-  title: { fontSize: 17, fontWeight: '700', color: colors.navy },
-  subtitle: { fontSize: 12, color: colors.muted2, marginTop: 1 },
+  title: { ...typo.title, color: colors.navy },
+  subtitle: { ...typo.caption, color: colors.muted2, marginTop: 1 },
   locked: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 8, padding: 32 },
-  lockedTitle: { fontSize: 17, fontWeight: '700', color: colors.navy },
-  lockedText: { fontSize: 13, color: colors.muted2, textAlign: 'center' },
+  lockedTitle: { ...typo.title, color: colors.navy },
+  lockedText: { ...typo.small, color: colors.muted2, textAlign: 'center' },
+  checkIn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginHorizontal: 20,
+    marginBottom: 6,
+    paddingVertical: 8,
+    paddingLeft: 12,
+    paddingRight: 8,
+    borderRadius: radii.md,
+    backgroundColor: colors.warningBg,
+  },
+  checkInText: { ...typo.smallStrong, flex: 1, color: colors.warningText },
+  checkInBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, minHeight: 36, paddingHorizontal: 12, borderRadius: radii.pill, backgroundColor: colors.accent },
+  checkInBtnText: { ...typo.smallStrong, color: '#fff' },
   pin: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -294,30 +335,30 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
   },
   pinEmpty: { borderStyle: 'dashed', borderColor: colors.primary, backgroundColor: colors.primarySofter },
-  pinLabel: { fontSize: 11, fontWeight: '700', color: colors.muted2, textTransform: 'uppercase' },
-  pinText: { fontSize: 14, fontWeight: '700', color: colors.navy },
-  pinCta: { flex: 1, fontSize: 13, fontWeight: '700', color: colors.primary },
+  pinLabel: { ...typo.label, color: colors.muted2, textTransform: 'uppercase' },
+  pinText: { ...typo.bodyStrong, color: colors.navy },
+  pinCta: { ...typo.smallStrong, flex: 1, color: colors.primary },
   thread: { padding: 16, gap: 8 },
   safety: { flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'center', paddingHorizontal: 12, paddingVertical: 6, borderRadius: radii.pill, backgroundColor: colors.card, marginBottom: 6 },
   safetyText: { fontSize: 11, color: colors.muted2, flexShrink: 1 },
   system: { alignSelf: 'center', paddingHorizontal: 10, paddingVertical: 4, borderRadius: radii.pill, backgroundColor: '#E2E7F2' },
   systemText: { fontSize: 12, fontWeight: '600', color: colors.muted2 },
-  hidden: { alignSelf: 'flex-start', fontSize: 12, fontStyle: 'italic', color: colors.muted2, paddingLeft: 36 },
+  hidden: { ...typo.caption, alignSelf: 'flex-start', fontStyle: 'italic', color: colors.muted2, paddingLeft: 36 },
   row: { flexDirection: 'row', alignItems: 'flex-end', gap: 6, maxWidth: '85%' },
   rowMine: { alignSelf: 'flex-end' },
   avatar: { width: 28, height: 28, borderRadius: 14, backgroundColor: colors.purple, alignItems: 'center', justifyContent: 'center' },
-  avatarText: { color: '#fff', fontSize: 10, fontWeight: '700' },
+  avatarText: { ...typo.label, color: '#fff' },
   bubble: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: radii.md, flexShrink: 1 },
   bubbleMine: { backgroundColor: colors.primary, borderBottomRightRadius: 4 },
   bubbleOther: { backgroundColor: colors.card, borderBottomLeftRadius: 4 },
-  author: { fontSize: 11, fontWeight: '700', color: colors.purpleText, marginBottom: 2 },
-  text: { fontSize: 14, color: colors.text, lineHeight: 19 },
-  time: { fontSize: 10, color: colors.muted2, alignSelf: 'flex-end', marginTop: 2 },
+  author: { ...typo.label, color: colors.purpleText, marginBottom: 2 },
+  text: { ...typo.body, color: colors.text, lineHeight: 19 },
+  time: { fontSize: 11, color: colors.muted2, alignSelf: 'flex-end', marginTop: 2 },
   closed: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, padding: 16 },
-  closedText: { fontSize: 13, color: colors.muted2 },
+  closedText: { ...typo.small, color: colors.muted2 },
   composer: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border, backgroundColor: colors.card, paddingTop: 8, paddingBottom: 8, gap: 8 },
   quick: { gap: 8, paddingHorizontal: 12 },
-  quickChip: { paddingHorizontal: 14, height: 40, borderRadius: radii.pill, backgroundColor: colors.primarySoft, justifyContent: 'center' },
+  quickChip: { paddingHorizontal: 14, minHeight: 40, borderRadius: radii.pill, backgroundColor: colors.primarySoft, justifyContent: 'center' },
   quickText: { fontSize: 13, fontWeight: '600', color: colors.primary },
   inputRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 8, paddingHorizontal: 12 },
   input: {
@@ -329,12 +370,12 @@ const styles = StyleSheet.create({
     paddingBottom: 11,
     borderRadius: radii.lg,
     backgroundColor: colors.input,
-    fontSize: 15,
+    fontSize: 16,
     color: colors.text,
   },
   send: { width: 42, height: 42, borderRadius: 21, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center' },
   backdrop: { flex: 1, backgroundColor: 'rgba(15,27,76,0.35)' },
   sheet: { backgroundColor: colors.card, borderTopLeftRadius: radii.xl, borderTopRightRadius: radii.xl, padding: 20, paddingBottom: 36, gap: 14 },
-  sheetTitle: { fontSize: 18, fontWeight: '800', color: colors.navy },
-  sheetText: { fontSize: 13, color: colors.muted2, lineHeight: 18 },
+  sheetTitle: { ...typo.h3, color: colors.navy },
+  sheetText: { ...typo.small, color: colors.muted2, lineHeight: 18 },
 });

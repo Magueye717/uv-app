@@ -3,9 +3,11 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
 import { Alert, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import QRCode from 'react-native-qrcode-svg';
+import Animated from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { OrganizerLine } from '@/components/caravan';
+import { popIn, riseIn } from '@/components/motion';
 import { BackButton, Field, LabeledField, PrimaryButton } from '@/components/ui';
 import {
   cancellationRefund,
@@ -16,13 +18,22 @@ import {
   FREE_CANCEL_MS,
   paymentMethods,
 } from '@/constants/data';
-import { colors, radii, shadow } from '@/constants/theme';
+import { colors, motion, radii, shadow, typo } from '@/constants/theme';
 import { useAuth } from '@/context/AuthContext';
 import { useTickets } from '@/context/TicketsContext';
 import { useNow } from '@/lib/useNow';
 
+/** "06h15" → "06h00": students wait at the stop 15 min before the bus. */
+function minus15(time: string) {
+  const [h, m] = time.split('h').map(Number);
+  const n = (h * 60 + m - 15 + 1440) % 1440;
+  return `${String(Math.floor(n / 60)).padStart(2, '0')}h${String(n % 60).padStart(2, '0')}`;
+}
+
 export default function Billet() {
-  const { id } = useLocalSearchParams<{ id: string }>();
+  // `nouveau`: just paid, the ticket is handed over with a short animation (not on later visits).
+  const { id, nouveau } = useLocalSearchParams<{ id: string; nouveau?: string }>();
+  const fresh = nouveau === '1';
   const { tickets, cancel, transfer } = useTickets();
   const { user } = useAuth();
   const now = useNow();
@@ -75,7 +86,7 @@ export default function Billet() {
             : ticket.status === 'transferred'
               ? { tone: 'neutral', icon: 'swap-horizontal', text: `Billet transféré au ${ticket.transferredTo}` }
               : confirmed
-                ? { tone: 'success', icon: 'checkmark-circle', text: 'Départ confirmé · rendez-vous 30 min avant' }
+                ? { tone: 'success', icon: 'checkmark-circle', text: `Départ confirmé · sois à ${ticket.pickup.place} à ${minus15(ticket.pickup.time)}` }
                 : {
                     tone: 'warning',
                     icon: 'hourglass-outline',
@@ -83,7 +94,7 @@ export default function Billet() {
                   })}
         />
 
-        <View style={[styles.ticket, shadow.raised, !active && { opacity: 0.6 }]}>
+        <Animated.View entering={fresh ? riseIn.delay(motion.fast) : undefined} style={[styles.ticket, shadow.raised, !active && { opacity: 0.6 }]}>
           <View style={styles.top}>
             <OrganizerLine organizer={c.organizer} />
             <View style={styles.route}>
@@ -98,12 +109,17 @@ export default function Billet() {
             )}
             <View style={styles.grid}>
               <Cell label="Date" value={c.date} />
-              <Cell label="Heure" value={c.time} />
+              <Cell label="Heure" value={ticket.pickup.time} />
               <Cell label="Place" value={`n° ${ticket.seat}`} />
-              <Cell label="Rendez-vous" value={c.meetingPoint} />
-              <Cell label="Descente" value={ticket.stop} />
-              <Cell label="Bus" value={c.vehicle.plate} />
             </View>
+            {/* Full width: stop names are long ("Diamniadio · Hôpital des enfants"). */}
+            <View style={styles.stops}>
+              <StopLine icon="enter-outline" label="Montée" place={ticket.pickup.place} time={ticket.pickup.time} />
+              <StopLine icon="exit-outline" label="Descente" place={ticket.dropoff.place} time={`~${ticket.dropoff.time}`} />
+            </View>
+            <Text style={styles.plate}>
+              {c.vehicle.label} · {c.vehicle.plate}
+            </Text>
           </View>
 
           {/* Tear line between the trip and the code. */}
@@ -116,7 +132,9 @@ export default function Billet() {
           <View style={styles.bottom}>
             {active ? (
               <>
-                <QRCode value={`UV-CARAVANE:${ticket.id}:${c.id}:${ticket.seat}`} size={170} color={colors.navy} backgroundColor={colors.card} />
+                <Animated.View entering={fresh ? popIn.delay(motion.slow) : undefined}>
+                <QRCode value={`UGB-CARAVANE:${ticket.id}:${c.id}:${ticket.seat}:${ticket.pickup.place}`} size={170} color={colors.navy} backgroundColor={colors.card} />
+                </Animated.View>
                 <Text style={styles.code}>{ticket.id}</Text>
                 <Text style={styles.muted}>Montre ce code au chauffeur à l’embarquement</Text>
               </>
@@ -127,7 +145,7 @@ export default function Billet() {
               </View>
             )}
           </View>
-        </View>
+        </Animated.View>
 
         {active && !departed && (
           <View style={{ gap: 10 }}>
@@ -192,6 +210,19 @@ function StatusBanner({ tone, icon, text }: { tone: keyof typeof TONES; icon: ke
   );
 }
 
+function StopLine({ icon, label, place, time }: { icon: keyof typeof Ionicons.glyphMap; label: string; place: string; time: string }) {
+  return (
+    <View style={styles.stopLine}>
+      <Ionicons name={icon} size={16} color={colors.primary} />
+      <View style={{ flex: 1 }}>
+        <Text style={styles.cellLabel}>{label}</Text>
+        <Text style={styles.cellValue}>{place}</Text>
+      </View>
+      <Text style={styles.stopTime}>{time}</Text>
+    </View>
+  );
+}
+
 function Cell({ label, value }: { label: string; value: string }) {
   return (
     <View style={styles.cell}>
@@ -236,31 +267,35 @@ function TransferSheet({ visible, onClose, onConfirm }: { visible: boolean; onCl
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
   head: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingTop: 8 },
-  h1: { fontSize: 18, fontWeight: '800', color: colors.navy },
+  h1: { ...typo.h3, color: colors.navy },
   body: { padding: 20, gap: 14, paddingBottom: 40 },
   missing: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 8 },
-  muted: { color: colors.muted2, fontSize: 12, textAlign: 'center' },
+  muted: { ...typo.caption, color: colors.muted2, textAlign: 'center' },
   banner: { flexDirection: 'row', alignItems: 'flex-start', gap: 8, padding: 12, borderRadius: radii.md },
   bannerText: { flex: 1, fontSize: 13, fontWeight: '600', lineHeight: 18 },
   ticket: { backgroundColor: colors.card, borderRadius: radii.xl },
   top: { padding: 18, gap: 12 },
   route: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  city: { fontSize: 24, fontWeight: '800', color: colors.navy },
-  passenger: { fontSize: 14, fontWeight: '700', color: colors.text },
+  city: { ...typo.h2, color: colors.navy },
+  passenger: { ...typo.bodyStrong, color: colors.text },
   grid: { flexDirection: 'row', flexWrap: 'wrap', rowGap: 12 },
   cell: { width: '33.33%', paddingRight: 8 },
+  stops: { gap: 10, padding: 12, borderRadius: radii.md, backgroundColor: colors.primarySoft },
+  stopLine: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  stopTime: { ...typo.smallStrong, color: colors.navy, fontVariant: ['tabular-nums'] },
+  plate: { ...typo.caption, color: colors.muted2 },
   cellLabel: { fontSize: 11, color: colors.muted2 },
-  cellValue: { fontSize: 14, fontWeight: '700', color: colors.navy, marginTop: 2 },
+  cellValue: { ...typo.bodyStrong, color: colors.navy, marginTop: 2 },
   tear: { height: 24, justifyContent: 'center' },
   dashes: { marginHorizontal: 18, borderTopWidth: 1.5, borderStyle: 'dashed', borderColor: colors.border },
   notch: { position: 'absolute', width: 24, height: 24, borderRadius: 12, backgroundColor: colors.bg },
   bottom: { alignItems: 'center', gap: 8, padding: 18, paddingTop: 8 },
-  code: { fontSize: 15, fontWeight: '700', color: colors.navy, letterSpacing: 2 },
+  code: { ...typo.title, color: colors.navy, letterSpacing: 2 },
   void: { height: 170, alignItems: 'center', justifyContent: 'center', gap: 8 },
   action: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: colors.card, borderRadius: radii.md, padding: 14 },
-  actionTitle: { fontSize: 15, fontWeight: '700', color: colors.navy },
-  actionSub: { fontSize: 12, color: colors.muted2, marginTop: 2 },
+  actionTitle: { ...typo.title, color: colors.navy },
+  actionSub: { ...typo.caption, color: colors.muted2, marginTop: 2 },
   backdrop: { flex: 1, backgroundColor: 'rgba(15,27,76,0.35)' },
   sheet: { backgroundColor: colors.card, borderTopLeftRadius: radii.xl, borderTopRightRadius: radii.xl, padding: 20, paddingBottom: 36, gap: 14 },
-  sheetTitle: { fontSize: 18, fontWeight: '800', color: colors.navy },
+  sheetTitle: { ...typo.h3, color: colors.navy },
 });

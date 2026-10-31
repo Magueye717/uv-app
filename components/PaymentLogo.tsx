@@ -11,7 +11,8 @@ import { radii } from '@/constants/theme';
 export function PaymentLogo({ method, size = 40 }: { method: Pick<PaymentMethod, 'name' | 'short' | 'bg' | 'logo'>; size?: number }) {
   const box = { width: size, height: size, borderRadius: radii.sm };
   if (method.logo) {
-    return <Image source={method.logo} style={box} contentFit="contain" accessibilityLabel={method.name} />;
+    // The providers' app icons are round: clipped to a circle (the Wave file has white corners).
+    return <Image source={method.logo} style={[box, { borderRadius: size / 2 }]} contentFit="cover" accessibilityLabel={method.name} />;
   }
   return (
     <View style={[box, styles.badge, { backgroundColor: method.bg }]} accessibilityLabel={method.name}>

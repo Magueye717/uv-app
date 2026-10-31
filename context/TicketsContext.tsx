@@ -1,11 +1,15 @@
 import { createContext, useContext, useMemo, useState, type ReactNode } from 'react';
 
+import type { CaravanStop } from '@/constants/data';
+
 export type Ticket = {
   id: string;
   caravanId: string;
   seat: number;
-  /** Where the student gets off at arrival. */
-  stop: string;
+  /** Where the student gets on, and the bus's time there. */
+  pickup: CaravanStop;
+  /** Where the student gets off. */
+  dropoff: CaravanStop;
   paymentId: string;
   /** Ticket price, without service fee: the base for refunds. */
   price: number;

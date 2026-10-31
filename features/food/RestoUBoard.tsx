@@ -4,7 +4,7 @@ import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { currentMeal } from '@/components/home';
 import { StatusChip } from '@/components/ui';
 import { mealTimes, publicMenus, type DishStatus } from '@/constants/data';
-import { colors, radii, shadow } from '@/constants/theme';
+import { colors, radii, shadow, typo } from '@/constants/theme';
 import { useNow } from '@/lib/useNow';
 
 const STATUS: Record<DishStatus, { label: string; tone: 'success' | 'warning' | 'danger' }> = {
@@ -67,15 +67,15 @@ const styles = StyleSheet.create({
   body: { padding: 20, gap: 14, paddingBottom: 32 },
   now: { flexDirection: 'row', alignItems: 'center', gap: 8, padding: 12, borderRadius: radii.md, backgroundColor: colors.card },
   nowLive: { backgroundColor: colors.successBg },
-  nowText: { fontSize: 14, fontWeight: '700', color: colors.muted2 },
+  nowText: { ...typo.bodyStrong, color: colors.muted2 },
   card: { backgroundColor: colors.card, borderRadius: radii.lg, padding: 16, gap: 14 },
   head: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   icon: { width: 40, height: 40, borderRadius: radii.sm, backgroundColor: colors.primarySoft, alignItems: 'center', justifyContent: 'center' },
-  name: { fontSize: 18, fontWeight: '800', color: colors.navy },
+  name: { ...typo.h3, color: colors.navy },
   meal: { gap: 10 },
-  mealTitle: { fontSize: 12, fontWeight: '700', color: colors.muted2, textTransform: 'uppercase', letterSpacing: 0.5 },
+  mealTitle: { ...typo.captionStrong, color: colors.muted2, textTransform: 'uppercase', letterSpacing: 0.5 },
   dish: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  dishName: { fontSize: 15, fontWeight: '700', color: colors.text },
-  dishDetail: { fontSize: 12, color: colors.muted2, marginTop: 1 },
-  note: { fontSize: 12, color: colors.muted2, textAlign: 'center' },
+  dishName: { ...typo.title, color: colors.text },
+  dishDetail: { ...typo.caption, color: colors.muted2, marginTop: 1 },
+  note: { ...typo.caption, color: colors.muted2, textAlign: 'center' },
 });

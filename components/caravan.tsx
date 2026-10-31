@@ -1,8 +1,10 @@
 import { Ionicons } from '@expo/vector-icons';
+import { useEffect } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
+import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 
-import { caravanState, formatFcfa, type Caravan, type CaravanOrganizer, type OrganizerLevel } from '@/constants/data';
-import { colors, radii } from '@/constants/theme';
+import { caravanState, formatFcfa, type Caravan, type CaravanOrganizer, type CaravanStop, type OrganizerLevel } from '@/constants/data';
+import { colors, motion, radii, typo } from '@/constants/theme';
 
 const LEVELS: Record<OrganizerLevel, { label: string; icon: keyof typeof Ionicons.glyphMap; fg: string; bg: string }> = {
   // Not "Confirmé": that word is used for trips that reached their minimum, on the same card.
@@ -33,11 +35,23 @@ export function OrganizerLine({ organizer: o }: { organizer: CaravanOrganizer })
   );
 }
 
+const plural = (n: number, word: string) => `${n} ${word}${n > 1 ? 's' : ''}`;
+
 /**
- * Organizer (or price), route line, and date / time / meeting point.
+ * Organizer (or price), route line, and date / time / first pickup point.
  * The organizer gets the whole first row so its name isn't cut; the list shows the price in its footer.
+ * `via`: a stop on the way that matched the student's search, e.g. Thiès on a UGB → Dakar bus.
  */
-export function CaravanSummary({ caravan: c, header = 'organizer' }: { caravan: Caravan; header?: 'organizer' | 'price' }) {
+export function CaravanSummary({
+  caravan: c,
+  header = 'organizer',
+  via,
+}: {
+  caravan: Caravan;
+  header?: 'organizer' | 'price';
+  via?: { stop: CaravanStop; kind: 'pickup' | 'dropoff' };
+}) {
+  const [first] = c.pickups;
   return (
     <View style={{ gap: 12 }}>
       {header === 'organizer' ? (
@@ -51,28 +65,36 @@ export function CaravanSummary({ caravan: c, header = 'organizer' }: { caravan: 
       <View style={styles.route}>
         <View>
           <Text style={styles.city}>{c.from}</Text>
-          <Text style={styles.cityLabel}>Départ</Text>
+          <Text style={styles.cityLabel}>{c.pickups.length > 1 ? plural(c.pickups.length, 'montée') : 'Départ'}</Text>
         </View>
         <View style={styles.track}>
           <View style={styles.line} />
           <View style={styles.busDot}>
-            <Ionicons name="bus" size={13} color={colors.primary} />
+            <Ionicons name="bus-outline" size={13} color={colors.primary} />
           </View>
           <View style={styles.line} />
         </View>
         <View style={{ alignItems: 'flex-end' }}>
           <Text style={styles.city}>{c.to}</Text>
-          <Text style={styles.cityLabel}>
-            {c.stops.length > 1 ? `${c.stops.length} arrêts` : c.stops[0]}
-          </Text>
+          <Text style={styles.cityLabel}>{c.dropoffs.length > 1 ? plural(c.dropoffs.length, 'descente') : 'Arrivée'}</Text>
         </View>
       </View>
 
       <View style={styles.meta}>
-        <Meta icon="calendar-outline" text={c.date} />
-        <Meta icon="time-outline" text={c.time} />
-        <Meta icon="location-outline" text={c.meetingPoint} />
+        {/* Date and time never shrink; the place gives way ("Village E +2"), the city is already above. */}
+        <Meta icon="calendar-outline" text={c.date} fixed />
+        <Meta icon="time-outline" text={c.time} fixed />
+        <Meta icon="location-outline" text={`${shortPlace(first.place, c.from)}${c.pickups.length > 1 ? ` +${c.pickups.length - 1}` : ''}`} />
       </View>
+
+      {via && (
+        <View style={styles.via}>
+          <Ionicons name={via.kind === 'pickup' ? 'enter-outline' : 'exit-outline'} size={14} color={colors.primary} />
+          <Text style={styles.viaText} numberOfLines={1}>
+            {via.kind === 'pickup' ? `Monte à ${via.stop.place} · ${via.stop.time}` : `Descends à ${via.stop.place} · vers ${via.stop.time}`}
+          </Text>
+        </View>
+      )}
     </View>
   );
 }
@@ -83,12 +105,7 @@ export function FillBar({ caravan: c }: { caravan: Caravan }) {
   return (
     <View style={{ gap: 6 }}>
       <View style={styles.bar}>
-        <View
-          style={[
-            styles.barFill,
-            { width: `${(booked / c.totalSeats) * 100}%`, backgroundColor: confirmed ? colors.success : colors.primary },
-          ]}
-        />
+        <GrowingFill percent={(booked / c.totalSeats) * 100} color={confirmed ? colors.success : colors.primary} />
         {!confirmed && <View style={[styles.threshold, { left: `${(c.minPassengers / c.totalSeats) * 100}%` }]} />}
       </View>
       <View style={styles.rowBetween}>
@@ -114,9 +131,22 @@ export function FillBar({ caravan: c }: { caravan: Caravan }) {
   );
 }
 
-function Meta({ icon, text }: { icon: keyof typeof Ionicons.glyphMap; text: string }) {
+/** Fills from empty when it appears, and slides when the count changes: "34/64" becomes something you see. */
+function GrowingFill({ percent, color }: { percent: number; color: string }) {
+  const p = useSharedValue(0);
+  useEffect(() => {
+    p.set(withTiming(percent, { duration: motion.slow }));
+  }, [percent, p]);
+  const fill = useAnimatedStyle(() => ({ width: `${p.get()}%` }));
+  return <Animated.View style={[styles.barFill, { backgroundColor: color }, fill]} />;
+}
+
+/** "Dakar · École normale" under a Dakar departure reads "École normale". */
+const shortPlace = (place: string, city: string) => (place.startsWith(`${city} · `) ? place.slice(city.length + 3) : place);
+
+function Meta({ icon, text, fixed }: { icon: keyof typeof Ionicons.glyphMap; text: string; fixed?: boolean }) {
   return (
-    <View style={styles.metaItem}>
+    <View style={[styles.metaItem, fixed && { flexShrink: 0 }]}>
       <Ionicons name={icon} size={13} color={colors.muted2} />
       <Text style={styles.metaText} numberOfLines={1}>
         {text}
@@ -128,15 +158,27 @@ function Meta({ icon, text }: { icon: keyof typeof Ionicons.glyphMap; text: stri
 const styles = StyleSheet.create({
   rowBetween: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
   organizer: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  organizerName: { flexShrink: 1, fontSize: 13, fontWeight: '700', color: colors.navy },
+  organizerName: { ...typo.smallStrong, flexShrink: 1, color: colors.navy },
   level: { flexDirection: 'row', alignItems: 'center', gap: 3, paddingHorizontal: 7, paddingVertical: 2, borderRadius: radii.pill },
-  levelText: { fontSize: 10, fontWeight: '700' },
+  levelText: { ...typo.label },
   rating: { flexDirection: 'row', alignItems: 'center', gap: 2 },
-  ratingText: { fontSize: 11, fontWeight: '700', color: colors.muted2 },
-  price: { fontSize: 17, fontWeight: '700', color: colors.primary },
+  ratingText: { ...typo.label, color: colors.muted2 },
+  price: { ...typo.title, color: colors.primary },
   perSeat: { fontSize: 12, fontWeight: '600', color: colors.muted2 },
   route: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  city: { fontSize: 17, fontWeight: '700', color: colors.navy },
+  city: { ...typo.title, color: colors.navy },
+  via: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    alignSelf: 'flex-start',
+    maxWidth: '100%',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: radii.pill,
+    backgroundColor: colors.primarySoft,
+  },
+  viaText: { ...typo.captionStrong, flexShrink: 1, color: colors.primary },
   cityLabel: { fontSize: 11, color: colors.muted2, marginTop: 1 },
   track: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 6 },
   line: { flex: 1, height: 1.5, backgroundColor: colors.border },
@@ -150,13 +192,13 @@ const styles = StyleSheet.create({
   },
   meta: { flexDirection: 'row', gap: 12 },
   metaItem: { flexDirection: 'row', alignItems: 'center', gap: 4, flexShrink: 1 },
-  metaText: { fontSize: 12, color: colors.muted2 },
+  metaText: { ...typo.caption, color: colors.muted2 },
   bar: { height: 6, borderRadius: 3, backgroundColor: colors.bg },
   barFill: { height: '100%', borderRadius: 3 },
   // Tick where the trip becomes confirmed.
   threshold: { position: 'absolute', top: -3, width: 2, height: 12, marginLeft: -1, borderRadius: 1, backgroundColor: colors.navy },
   state: { flexDirection: 'row', alignItems: 'center', gap: 4, flexShrink: 1 },
-  stateText: { fontSize: 12, fontWeight: '700' },
+  stateText: { ...typo.captionStrong },
   // Never squeezed by the status text.
-  count: { flexShrink: 0, fontSize: 12, fontWeight: '700', color: colors.muted2 },
+  count: { ...typo.captionStrong, flexShrink: 0, color: colors.muted2 },
 });

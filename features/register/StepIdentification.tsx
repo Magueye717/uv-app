@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { Field, LabeledField, PrimaryButton } from '@/components/ui';
-import { colors, radii } from '@/constants/theme';
+import { colors, radii, typo } from '@/constants/theme';
 import {
   formatPhone,
   normalizeStudentId,
@@ -103,8 +103,8 @@ const styles = StyleSheet.create({
     backgroundColor: colors.dangerBg,
   },
   bannerText: { flex: 1, fontSize: 13, fontWeight: '600', color: colors.danger },
-  bannerLink: { fontSize: 13, fontWeight: '700', color: colors.orangeText, textDecorationLine: 'underline' },
+  bannerLink: { ...typo.smallStrong, color: colors.orangeText, textDecorationLine: 'underline' },
   login: { flexDirection: 'row', justifyContent: 'center', gap: 4 },
-  muted: { fontSize: 14, color: colors.muted2 },
-  link: { fontSize: 14, fontWeight: '700', color: colors.orangeText },
+  muted: { ...typo.body, color: colors.muted2 },
+  link: { ...typo.bodyStrong, color: colors.orangeText },
 });

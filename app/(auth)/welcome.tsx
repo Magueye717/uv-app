@@ -17,7 +17,8 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { colors, radii } from '@/constants/theme';
+import { BrandLogo } from '@/components/BrandLogo';
+import { colors, radii, typo } from '@/constants/theme';
 
 type Slide = { key: string; title: string; highlight: string; text: string };
 
@@ -101,10 +102,8 @@ export default function WelcomeScreen() {
         <SafeAreaView edges={['top']} style={{ flex: 1 }}>
           <View style={styles.header}>
             <View style={styles.brand}>
-              <View style={styles.brandLogo}>
-                <Ionicons name="school" size={15} color="#fff" />
-              </View>
-              <Text style={styles.brandText}>UV-APP</Text>
+              <BrandLogo size={28} />
+              <Text style={styles.brandText}>UGB Campus</Text>
             </View>
             <View style={styles.proof}>
               <View style={{ flexDirection: 'row' }}>
@@ -114,7 +113,10 @@ export default function WelcomeScreen() {
                   </View>
                 ))}
               </View>
-              <Text style={styles.proofText}>Tes camarades sont là</Text>
+              {/* Short: it shares the row with the brand, even on small phones. */}
+              <Text style={styles.proofText} numberOfLines={1}>
+                Rejoins-les
+              </Text>
             </View>
           </View>
 
@@ -197,6 +199,7 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   brand: {
+    flexShrink: 0,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
@@ -208,15 +211,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.25)',
   },
-  brandLogo: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: colors.orange,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  brandText: { fontSize: 15, fontWeight: '700', color: '#fff', letterSpacing: 0.4 },
+  brandText: { ...typo.title, color: '#fff', letterSpacing: 0.4 },
   slide: { justifyContent: 'flex-end', paddingHorizontal: 24, paddingBottom: 8 },
   title: {
     fontSize: 28,
@@ -227,8 +222,11 @@ const styles = StyleSheet.create({
     textShadowColor: 'rgba(0,0,0,0.35)',
     textShadowRadius: 12,
   },
-  text: { fontSize: 14, lineHeight: 20, color: 'rgba(255,255,255,0.85)', marginTop: 8 },
+  text: { ...typo.body, lineHeight: 20, color: 'rgba(255,255,255,0.85)', marginTop: 8 },
+  // Gives way to the brand on narrow phones rather than pushing the header off screen.
   proof: {
+    flexShrink: 1,
+    marginLeft: 10,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
@@ -248,14 +246,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  avatarText: { fontSize: 10, fontWeight: '700', color: '#fff' },
-  proofText: { fontSize: 12, fontWeight: '600', color: colors.text },
+  avatarText: { ...typo.label, color: '#fff' },
+  proofText: { flexShrink: 1, fontSize: 12, fontWeight: '600', color: colors.text },
   features: { gap: 8, paddingHorizontal: 24, paddingTop: 14, paddingBottom: 14 },
   feature: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    height: 36,
+    minHeight: 36,
     paddingHorizontal: 12,
     borderRadius: radii.pill,
     backgroundColor: 'rgba(255,255,255,0.12)',
@@ -268,7 +266,7 @@ const styles = StyleSheet.create({
   dot: { width: 8, height: 8, borderRadius: 4, backgroundColor: 'rgba(255,255,255,0.3)' },
   dotActive: { width: 28, backgroundColor: colors.orange },
   primary: {
-    height: 56,
+    minHeight: 56,
     borderRadius: radii.md,
     backgroundColor: colors.accent,
     alignItems: 'center',
@@ -279,9 +277,9 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 6 },
     elevation: 6,
   },
-  primaryText: { fontSize: 16, fontWeight: '700', color: '#fff' },
+  primaryText: { ...typo.title, color: '#fff' },
   secondary: {
-    height: 56,
+    minHeight: 56,
     borderRadius: radii.md,
     borderWidth: 1.5,
     borderColor: 'rgba(255,255,255,0.3)',
@@ -289,7 +287,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  secondaryText: { fontSize: 16, fontWeight: '700', color: '#fff' },
+  secondaryText: { ...typo.title, color: '#fff' },
   terms: {
     fontSize: 12,
     lineHeight: 18,

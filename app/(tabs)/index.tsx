@@ -7,7 +7,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AdCarousel, AlertStrip, CaravanCard, RestoCard, TaxiCard } from '@/components/home';
 import { InProgress } from '@/components/InProgress';
 import { headlines } from '@/constants/data';
-import { colors, shadow, radii } from '@/constants/theme';
+import { colors, shadow, radii, typo } from '@/constants/theme';
 import { useAuth } from '@/context/AuthContext';
 import { bellLabel, useNotifications } from '@/context/NotificationsContext';
 import { setupNotifications } from '@/lib/notifications';
@@ -97,7 +97,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   avatarText: { color: '#fff', fontWeight: '700' },
-  hello: { color: '#fff', fontSize: 20, fontWeight: '800' },
+  hello: { ...typo.h2, color: '#fff' },
   campus: { color: 'rgba(255,255,255,0.8)', marginTop: 2 },
   bell: {
     width: 44,
@@ -117,8 +117,8 @@ const styles = StyleSheet.create({
     backgroundColor: colors.danger,
   },
   body: { padding: 20, paddingBottom: 32, gap: 14 },
-  muted: { color: colors.muted2, fontSize: 13, marginTop: 2 },
-  section: { fontSize: 20, fontWeight: '800', color: colors.navy, marginTop: 8 },
+  muted: { ...typo.small, color: colors.muted2, marginTop: 2 },
+  section: { ...typo.h2, color: colors.navy, marginTop: 8 },
   news: {
     backgroundColor: colors.card,
     borderRadius: radii.lg,
@@ -135,7 +135,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   newsTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 2 },
-  newsTag: { fontSize: 10, fontWeight: '700', letterSpacing: 0.4 },
+  newsTag: { ...typo.label, letterSpacing: 0.4 },
   newsTime: { fontSize: 11, color: colors.muted2 },
-  newsTitle: { fontWeight: '700', color: colors.navy, fontSize: 14 },
+  newsTitle: { ...typo.bodyStrong, color: colors.navy },
 });

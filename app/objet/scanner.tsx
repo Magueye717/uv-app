@@ -7,7 +7,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { BackButton, Field, LabeledField, PrimaryButton } from '@/components/ui';
 import { lostPlaces, studentDirectory } from '@/constants/data';
-import { colors, radii, shadow } from '@/constants/theme';
+import { colors, radii, shadow, typo } from '@/constants/theme';
 import { useLost } from '@/context/LostContext';
 
 // Barcode formats a student card may carry; the reader ignores the others.
@@ -218,29 +218,29 @@ function Choice({
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
   head: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingTop: 8 },
-  h1: { fontSize: 18, fontWeight: '800', color: colors.navy },
+  h1: { ...typo.h3, color: colors.navy },
   body: { padding: 20, gap: 14, paddingBottom: 40 },
   camera: { height: 260, borderRadius: radii.lg, overflow: 'hidden', backgroundColor: colors.navy, alignItems: 'center', justifyContent: 'center' },
   // Card-shaped target in the middle of the camera.
   frame: { width: '80%', height: 120, borderRadius: radii.md, borderWidth: 3, borderColor: '#fff' },
   permission: { alignItems: 'center', gap: 10, padding: 24 },
-  permissionText: { color: '#fff', textAlign: 'center', fontSize: 14 },
-  permissionBtn: { backgroundColor: '#fff', paddingHorizontal: 16, height: 38, borderRadius: radii.pill, justifyContent: 'center' },
+  permissionText: { ...typo.body, color: '#fff', textAlign: 'center' },
+  permissionBtn: { backgroundColor: '#fff', paddingHorizontal: 16, minHeight: 38, borderRadius: radii.pill, justifyContent: 'center' },
   permissionBtnText: { color: colors.navy, fontWeight: '700' },
-  hint: { fontSize: 13, color: colors.muted2, textAlign: 'center', lineHeight: 18 },
+  hint: { ...typo.small, color: colors.muted2, textAlign: 'center', lineHeight: 18 },
   card: { backgroundColor: colors.card, borderRadius: radii.lg, padding: 18, alignItems: 'center', gap: 8 },
   resultIcon: { width: 56, height: 56, borderRadius: 28, alignItems: 'center', justifyContent: 'center' },
-  resultTitle: { fontSize: 17, fontWeight: '700', color: colors.navy, textAlign: 'center' },
-  resultText: { fontSize: 13, color: colors.muted2, textAlign: 'center', lineHeight: 18 },
+  resultTitle: { ...typo.title, color: colors.navy, textAlign: 'center' },
+  resultText: { ...typo.small, color: colors.muted2, textAlign: 'center', lineHeight: 18 },
   rescan: { color: colors.primary, fontWeight: '700', marginTop: 4 },
-  section: { fontSize: 16, fontWeight: '700', color: colors.navy, marginTop: 4 },
+  section: { ...typo.title, color: colors.navy, marginTop: 4 },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  chip: { paddingHorizontal: 14, height: 40, borderRadius: radii.pill, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border, justifyContent: 'center' },
+  chip: { paddingHorizontal: 14, minHeight: 40, borderRadius: radii.pill, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border, justifyContent: 'center' },
   chipOn: { backgroundColor: colors.primary, borderColor: colors.primary },
   chipText: { fontWeight: '600', color: colors.navy },
   choice: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: colors.card, borderRadius: radii.md, padding: 14, borderWidth: 1.5, borderColor: 'transparent' },
   choiceOn: { borderColor: colors.primary },
-  choiceTitle: { fontSize: 14, fontWeight: '700', color: colors.navy },
-  choiceDetail: { fontSize: 12, color: colors.muted2, marginTop: 2 },
+  choiceTitle: { ...typo.bodyStrong, color: colors.navy },
+  choiceDetail: { ...typo.caption, color: colors.muted2, marginTop: 2 },
   radio: { width: 22, height: 22, borderRadius: 11, borderWidth: 2, borderColor: colors.border },
 });

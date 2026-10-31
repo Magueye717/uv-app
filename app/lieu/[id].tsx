@@ -17,7 +17,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { PrimaryButton } from '@/components/ui';
 import { places } from '@/constants/data';
-import { colors, radii, shadow } from '@/constants/theme';
+import { colors, radii, shadow, typo } from '@/constants/theme';
 import { openDirections } from '@/lib/maps';
 
 const HERO_HEIGHT = 280;
@@ -60,11 +60,11 @@ export default function LieuScreen() {
 
         <View style={styles.body}>
           <View style={[styles.infoCard, shadow.card]}>
-            <Info icon="location" label="Emplacement" value={p.area} />
+            <Info icon="location-outline" label="Emplacement" value={p.area} />
             {p.hours && (
               <>
                 <View style={styles.divider} />
-                <Info icon="time" label="Horaires" value={p.hours} />
+                <Info icon="time-outline" label="Horaires" value={p.hours} />
               </>
             )}
           </View>
@@ -187,7 +187,7 @@ const styles = StyleSheet.create({
   noPhoto: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   // Bottom-right, above the overlapping card: the top-right corner is the phone's clock.
   counter: { position: 'absolute', right: 20, bottom: 38, paddingHorizontal: 10, paddingVertical: 4, borderRadius: radii.pill, backgroundColor: 'rgba(15,27,76,0.6)' },
-  counterText: { fontSize: 12, fontWeight: '700', color: '#fff' },
+  counterText: { ...typo.captionStrong, color: '#fff' },
   // Above the info card, which overlaps the bottom of the photo.
   dots: { position: 'absolute', bottom: 40, left: 0, right: 0, flexDirection: 'row', justifyContent: 'center', gap: 8 },
   dot: { width: 7, height: 7, borderRadius: 4, backgroundColor: 'rgba(255,255,255,0.55)' },
@@ -206,15 +206,15 @@ const styles = StyleSheet.create({
   // Overlaps the photo a little, like the restaurant page.
   card: { marginTop: -28, marginHorizontal: 20, backgroundColor: colors.card, borderRadius: radii.lg, padding: 16, gap: 8 },
   cat: { flexDirection: 'row', alignItems: 'center', gap: 4, alignSelf: 'flex-start', paddingHorizontal: 9, paddingVertical: 3, borderRadius: radii.pill },
-  catText: { fontSize: 12, fontWeight: '700' },
-  name: { fontSize: 22, fontWeight: '800', color: colors.navy },
-  description: { fontSize: 14, color: colors.muted2, lineHeight: 20 },
+  catText: { ...typo.captionStrong },
+  name: { ...typo.h2, color: colors.navy },
+  description: { ...typo.body, color: colors.muted2, lineHeight: 20 },
   body: { paddingHorizontal: 20, marginTop: 16, gap: 12 },
   infoCard: { backgroundColor: colors.card, borderRadius: radii.lg, padding: 14, gap: 12 },
   info: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   infoIcon: { width: 36, height: 36, borderRadius: 18, backgroundColor: colors.primarySoft, alignItems: 'center', justifyContent: 'center' },
-  infoLabel: { fontSize: 12, color: colors.muted2 },
-  infoValue: { fontSize: 14, fontWeight: '700', color: colors.navy, marginTop: 1 },
+  infoLabel: { ...typo.caption, color: colors.muted2 },
+  infoValue: { ...typo.bodyStrong, color: colors.navy, marginTop: 1 },
   divider: { height: StyleSheet.hairlineWidth, backgroundColor: colors.border },
-  note: { textAlign: 'center', fontSize: 12, color: colors.muted2 },
+  note: { ...typo.caption, textAlign: 'center', color: colors.muted2 },
 });

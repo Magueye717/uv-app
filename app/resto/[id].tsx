@@ -12,11 +12,14 @@ import {
   useWindowDimensions,
   type ScrollViewInstance,
 } from 'react-native';
+import Animated, { LayoutAnimationConfig, SlideInDown, SlideOutDown } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { fadeIn, PopOnChange } from '@/components/motion';
 import { findPrivateResto, formatFcfa, restoStatus, type RestoMenu } from '@/constants/data';
 import { useCart } from '@/context/CartContext';
-import { colors, radii, shadow } from '@/constants/theme';
+import { colors, motion, radii, shadow, typo } from '@/constants/theme';
+import { haptics } from '@/lib/haptics';
 import { useNow } from '@/lib/useNow';
 
 const PADDING = 20;
@@ -69,7 +72,7 @@ export default function RestoMenuScreen() {
           <View style={[styles.heroBar, { top: insets.top + 8 }]}>
             <RoundButton icon="arrow-back" label="Retour" onPress={() => router.back()} />
             <RoundButton
-              icon="call"
+              icon="call-outline"
               label={`Appeler ${resto.name}`}
               onPress={() => Linking.openURL(`tel:${resto.phone.replace(/\s/g, '')}`)}
             />
@@ -166,19 +169,25 @@ export default function RestoMenuScreen() {
         </View>
       </ScrollView>
 
-      {count > 0 && (
-        <View style={[styles.cartWrap, { paddingBottom: insets.bottom + 12 }]}>
-          <Pressable
-            style={styles.cart}
-            onPress={() => router.push('/panier')}
-            accessibilityRole="button">
-            <Ionicons name="cart-outline" size={18} color="#fff" />
-            <Text style={styles.cartText}>
-              Voir le panier · {count} article{count > 1 ? 's' : ''} · {formatFcfa(total)}
-            </Text>
-          </Pressable>
-        </View>
-      )}
+      {/* Slides up with the first item, down when the basket empties; already there when the screen opens. */}
+      <LayoutAnimationConfig skipEntering>
+        {count > 0 && (
+          <Animated.View
+            entering={SlideInDown.springify().damping(motion.glide.damping).stiffness(motion.glide.stiffness)}
+            exiting={SlideOutDown.duration(motion.base)}
+            style={[styles.cartWrap, { paddingBottom: insets.bottom + 12 }]}>
+            <Pressable style={styles.cart} onPress={() => router.push('/panier')} accessibilityRole="button">
+              {/* Bounces on each change: the item went into the basket. */}
+              <PopOnChange id={count}>
+                <Ionicons name="cart-outline" size={18} color="#fff" />
+              </PopOnChange>
+              <Text style={styles.cartText}>
+                Voir le panier · {count} article{count > 1 ? 's' : ''} · {formatFcfa(total)}
+              </Text>
+            </Pressable>
+          </Animated.View>
+        )}
+      </LayoutAnimationConfig>
     </View>
   );
 }
@@ -228,36 +237,53 @@ function Photo({
   );
 }
 
-function QtyControl({
-  qty,
-  disabled,
-  name,
-  block,
-  onChange,
-}: {
+function QtyControl(props: QtyProps) {
+  return (
+    <LayoutAnimationConfig skipEntering>
+      <QtyInner {...props} />
+    </LayoutAnimationConfig>
+  );
+}
+
+type QtyProps = {
   qty: number;
   disabled: boolean;
   name: string;
   /** Full-width control on its own row (drink cards). */
   block?: boolean;
   onChange: (qty: number) => void;
-}) {
+};
+
+function QtyInner({
+  qty,
+  disabled,
+  name,
+  block,
+  onChange,
+}: QtyProps) {
+  const change = (q: number) => {
+    haptics.select();
+    onChange(q);
+  };
+  // "Ajouter" turns into the stepper with a short fade; items already in the basket show it straight away.
   if (qty) {
     return (
-      <View style={[styles.stepper, block && styles.stepperBlock]}>
-        <Pressable onPress={() => onChange(qty - 1)} style={[styles.stepMinus, block && { backgroundColor: colors.card }]} hitSlop={8} accessibilityLabel={`Retirer un ${name}`}>
+      <Animated.View entering={fadeIn} style={[styles.stepper, block && styles.stepperBlock]}>
+        <Pressable onPress={() => change(qty - 1)} style={[styles.stepMinus, block && { backgroundColor: colors.card }]} hitSlop={8} accessibilityLabel={`Retirer un ${name}`}>
           <Ionicons name="remove" size={16} color={colors.navy} />
         </Pressable>
-        <Text style={styles.qty}>{qty}</Text>
-        <Pressable onPress={() => onChange(qty + 1)} style={styles.stepPlus} hitSlop={8} accessibilityLabel={`Ajouter un ${name}`}>
+        <PopOnChange id={qty}>
+          <Text style={styles.qty}>{qty}</Text>
+        </PopOnChange>
+        <Pressable onPress={() => change(qty + 1)} style={styles.stepPlus} hitSlop={8} accessibilityLabel={`Ajouter un ${name}`}>
           <Ionicons name="add" size={16} color="#fff" />
         </Pressable>
-      </View>
+      </Animated.View>
     );
   }
   return (
     <Pressable
-      onPress={() => onChange(1)}
+      onPress={() => change(1)}
       disabled={disabled}
       style={[styles.add, block && styles.addBlock, disabled && { opacity: 0.4 }]}
       hitSlop={8}
@@ -290,8 +316,8 @@ const styles = StyleSheet.create({
     borderRadius: radii.lg,
     padding: 16,
   },
-  name: { fontSize: 22, fontWeight: '800', color: colors.navy },
-  sub: { fontSize: 13, color: colors.muted2, marginTop: 2 },
+  name: { ...typo.h2, color: colors.navy },
+  sub: { ...typo.small, color: colors.muted2, marginTop: 2 },
   tag: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -304,7 +330,7 @@ const styles = StyleSheet.create({
   statusTag: { alignSelf: 'flex-start', marginTop: 12 },
   metaLine: { flexDirection: 'row', flexWrap: 'wrap', columnGap: 14, rowGap: 6, marginTop: 10 },
   metaItem: { flexDirection: 'row', alignItems: 'center', gap: 5 },
-  metaText: { fontSize: 13, color: colors.muted2 },
+  metaText: { ...typo.small, color: colors.muted2 },
   tagText: { fontSize: 12, fontWeight: '600', color: colors.muted2 },
   dot: { width: 7, height: 7, borderRadius: 4 },
   body: { paddingHorizontal: PADDING, marginTop: 16, gap: 20 },
@@ -315,27 +341,27 @@ const styles = StyleSheet.create({
     borderRadius: radii.md,
     backgroundColor: colors.warningBg,
   },
-  closedText: { flex: 1, fontSize: 13, color: colors.warningText },
+  closedText: { ...typo.small, flex: 1, color: colors.warningText },
   tabs: { flexDirection: 'row', backgroundColor: colors.primarySoft, borderRadius: radii.pill, padding: 4 },
-  tab: { flex: 1, height: 38, borderRadius: radii.pill, alignItems: 'center', justifyContent: 'center' },
+  tab: { flex: 1, minHeight: 38, borderRadius: radii.pill, alignItems: 'center', justifyContent: 'center' },
   tabOn: { backgroundColor: colors.card, ...shadow.card },
-  tabText: { fontSize: 13, fontWeight: '700', color: colors.muted2 },
+  tabText: { ...typo.smallStrong, color: colors.muted2 },
   tabTextOn: { color: colors.navy },
   section: { gap: 12 },
-  sectionTitle: { fontSize: 18, fontWeight: '800', color: colors.navy },
-  muted: { color: colors.muted2, fontSize: 12, marginTop: 2 },
+  sectionTitle: { ...typo.h3, color: colors.navy },
+  muted: { ...typo.caption, color: colors.muted2, marginTop: 2 },
   dish: { backgroundColor: colors.card, borderRadius: radii.lg, padding: 10, flexDirection: 'row', gap: 12 },
   dishPhoto: { width: 100, height: 100, borderRadius: radii.md, overflow: 'hidden', alignItems: 'center', justifyContent: 'center' },
   dishInfo: { flex: 1, paddingVertical: 2 },
-  dishName: { fontWeight: '700', color: colors.navy, fontSize: 16 },
+  dishName: { ...typo.title, color: colors.navy },
   dishBottom: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 'auto', paddingTop: 8 },
-  price: { fontWeight: '700', color: colors.primary, fontSize: 15 },
+  price: { ...typo.title, color: colors.primary },
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: GRID_GAP },
   drink: { backgroundColor: colors.card, borderRadius: radii.lg, overflow: 'hidden' },
   drinkPhoto: { height: 100, overflow: 'hidden', alignItems: 'center', justifyContent: 'center' },
   drinkInfo: { padding: 10 },
-  drinkName: { fontWeight: '700', color: colors.navy, fontSize: 14 },
-  drinkPrice: { fontWeight: '700', color: colors.primary, fontSize: 14, marginTop: 6 },
+  drinkName: { ...typo.bodyStrong, color: colors.navy },
+  drinkPrice: { ...typo.bodyStrong, color: colors.primary, marginTop: 6 },
   stepper: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   // 32 px visible, 48 px to the touch with hitSlop.
   stepMinus: {
@@ -361,23 +387,23 @@ const styles = StyleSheet.create({
     gap: 4,
     backgroundColor: colors.primarySoft,
     paddingHorizontal: 12,
-    height: 36,
+    minHeight: 36,
     borderRadius: radii.pill,
   },
   // Same 32 px height in both states so the drink card doesn't jump.
-  addBlock: { justifyContent: 'center', height: 40, marginTop: 8 },
-  stepperBlock: { justifyContent: 'space-between', height: 40, marginTop: 8, paddingHorizontal: 2, borderRadius: radii.pill, backgroundColor: colors.bg },
-  addText: { color: colors.primary, fontWeight: '700', fontSize: 12 },
+  addBlock: { justifyContent: 'center', minHeight: 40, marginTop: 8 },
+  stepperBlock: { justifyContent: 'space-between', minHeight: 40, marginTop: 8, paddingHorizontal: 2, borderRadius: radii.pill, backgroundColor: colors.bg },
+  addText: { ...typo.captionStrong, color: colors.primary },
   cartWrap: { position: 'absolute', left: 0, right: 0, bottom: 0, paddingHorizontal: PADDING, paddingTop: 12 },
   cart: {
     flexDirection: 'row',
     gap: 8,
     backgroundColor: colors.accent,
-    height: 52,
+    minHeight: 52,
     borderRadius: radii.pill,
     alignItems: 'center',
     justifyContent: 'center',
     ...shadow.card,
   },
-  cartText: { color: '#fff', fontWeight: '700', fontSize: 14 },
+  cartText: { ...typo.bodyStrong, color: '#fff' },
 });

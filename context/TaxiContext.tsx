@@ -1,7 +1,9 @@
 import { createContext, useContext, useMemo, useState, type ReactNode } from 'react';
 
-import { taxiMessages, taxiPeople, taxiTrips, type TaxiMessage, type TaxiTrip } from '@/constants/data';
+import { TAXI_LOCK_MIN, taxiMessages, taxiPeople, taxiTrips, type TaxiMessage, type TaxiTrip } from '@/constants/data';
 import { useAuth } from '@/context/AuthContext';
+import { haptics } from '@/lib/haptics';
+import { cancelTaxiReminder, scheduleTaxiReminder } from '@/lib/notifications';
 
 type NewTrip = Pick<TaxiTrip, 'from' | 'to' | 'departureAt' | 'seats' | 'fare'>;
 
@@ -13,6 +15,10 @@ type TaxiValue = {
   strikes: number;
   /** Students whose messages I don't want to see. */
   blocked: string[];
+  /** Other students' messages since I last opened this trip's chat. */
+  unreadFor: (tripId: string) => number;
+  /** Called while the chat is on screen. */
+  markRead: (tripId: string) => void;
   nameOf: (initials: string) => string;
   create: (trip: NewTrip) => void;
   join: (id: string) => void;
@@ -39,6 +45,7 @@ export function TaxiProvider({ children }: { children: ReactNode }) {
   const [messages, setMessages] = useState<TaxiMessage[]>(taxiMessages);
   const [strikes, setStrikes] = useState(0);
   const [blocked, setBlocked] = useState<string[]>([]);
+  const [lastRead, setLastRead] = useState<Record<string, number>>({});
 
   const value = useMemo<TaxiValue>(() => {
     const nameOf = (initials: string) => (initials === me ? (user?.firstName ?? 'Toi') : (taxiPeople[initials] ?? initials));
@@ -56,6 +63,9 @@ export function TaxiProvider({ children }: { children: ReactNode }) {
       messages,
       strikes,
       blocked,
+      unreadFor: (tripId) =>
+        messages.filter((m) => m.tripId === tripId && m.author && m.author !== me && m.at > (lastRead[tripId] ?? 0)).length,
+      markRead: (tripId) => setLastRead((r) => ({ ...r, [tripId]: Date.now() })),
       nameOf,
       activeTrip,
       create: (trip) => {
@@ -64,19 +74,25 @@ export function TaxiProvider({ children }: { children: ReactNode }) {
         const organizer = { name: user ? `${user.firstName} ${user.lastName}` : 'Toi', initials: me, trips: 0, lateCancels: strikes };
         setTrips((ts) => [{ ...trip, id, organizer, passengers: [me], checkedIn: [] }, ...ts]);
         post(id, 'Trajet publié. La discussion est réservée aux passagers qui ont payé leur place.');
+        scheduleTaxiReminder({ id, from: trip.from, departureAt: trip.departureAt }, TAXI_LOCK_MIN);
       },
       join: (id) => {
         if (activeTrip()) return;
         update(id, (t) => ({ passengers: [...t.passengers, me] }));
+        haptics.success();
         post(id, `${nameOf(me)} a rejoint le trajet`);
+        const trip = trips.find((t) => t.id === id);
+        if (trip) scheduleTaxiReminder(trip, TAXI_LOCK_MIN);
       },
       leave: (id) => {
         update(id, (t) => ({ passengers: t.passengers.filter((p) => p !== me), checkedIn: t.checkedIn.filter((p) => p !== me) }));
         post(id, `${nameOf(me)} a quitté le trajet`);
+        cancelTaxiReminder(id);
       },
       cancel: (id, late) => {
         setTrips((ts) => ts.filter((t) => t.id !== id));
         if (late) setStrikes((n) => n + 1);
+        cancelTaxiReminder(id);
       },
       handOver: (id) => {
         const trip = trips.find((t) => t.id === id);
@@ -89,10 +105,15 @@ export function TaxiProvider({ children }: { children: ReactNode }) {
           checkedIn: t.checkedIn.filter((p) => p !== me),
         }));
         post(id, `${nameOf(me)} a passé le relais. ${nameOf(next)} organise maintenant le trajet.`);
+        cancelTaxiReminder(id);
       },
       checkIn: (id) => {
+        // Once is enough, whichever button or quick reply was used.
+        if (trips.find((t) => t.id === id)?.checkedIn.includes(me)) return;
         update(id, (t) => ({ checkedIn: [...t.checkedIn, me] }));
+        haptics.success();
         post(id, `${nameOf(me)} est là ✓`);
+        cancelTaxiReminder(id);
       },
       depart: (id) => {
         update(id, () => ({ departed: true }));
@@ -105,7 +126,7 @@ export function TaxiProvider({ children }: { children: ReactNode }) {
       },
       block: (initials) => setBlocked((b) => (b.includes(initials) ? b : [...b, initials])),
     };
-  }, [me, user, trips, messages, strikes, blocked]);
+  }, [me, user, trips, messages, strikes, blocked, lastRead]);
 
   return <TaxiContext.Provider value={value}>{children}</TaxiContext.Provider>;
 }
