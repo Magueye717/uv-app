@@ -6,16 +6,19 @@ export const colors = {
   /** Light navy tint behind icons and selected rows. */
   primarySoft: '#E9ECF5',
   primarySofter: '#F3F4F9',
-  /** Main action buttons (Réserver, Commander, Payer…). Too light for small text: use orangeText. */
-  accent: '#F07A2A',
+  /**
+   * Main action buttons (Réserver, Commander, Payer…). Darkest orange that keeps white text
+   * readable (4.5:1). The brighter `orange` stays for decoration: highlights, progress, badges.
+   */
+  accent: '#C4501A',
   accentSoft: '#FFF1E6',
   navy: '#0F1B4C',
   text: '#121A3A',
   muted: '#8A93A8',
   muted2: '#6B7389',
   bg: '#ECEFF4',
-  // Soft off-white instead of pure white: less glare at full brightness.
-  card: '#FBFBF8',
+  // Pure white: the cream tint looked yellowish on the cool grey background.
+  card: '#FFFFFF',
   input: '#F3F5FA',
   border: '#E2E6EE',
   success: '#1FA35A',
@@ -36,11 +39,16 @@ export const colors = {
   purpleText: '#5A4BD1',
 };
 
+/**
+ * Corner scale: xs for small chips and thumbnails, sm for icon tiles and small buttons,
+ * md for fields, buttons and inner panels, lg for cards, xl for sheets. Circles use size / 2.
+ */
 export const radii = {
+  xs: 8,
   sm: 12,
   md: 16,
   lg: 20,
-  xl: 24,
+  xl: 28,
   pill: 999,
 };
 

@@ -1,12 +1,13 @@
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { BackButton, FilterChips } from '@/components/ui';
 import { notificationFilters, notifications } from '@/constants/data';
-import { colors, shadow } from '@/constants/theme';
+import { colors, shadow, radii } from '@/constants/theme';
+import { useNotifications } from '@/context/NotificationsContext';
 
 type Filter = (typeof notificationFilters)[number];
 
@@ -18,15 +19,23 @@ const groups = [
 export default function NotificationsScreen() {
   const [filter, setFilter] = useState<Filter>('Tout');
   const list = filter === 'Tout' ? notifications : notifications.filter((n) => n.category === filter);
-  const todayCount = notifications.filter((n) => n.day === 'today').length;
+  const { unread, markAllRead } = useNotifications();
+  // What was new when the screen opened stays highlighted while it's open; the bell clears right away.
+  const [fresh] = useState(unread);
+  useEffect(() => {
+    markAllRead();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once, on opening
+  }, []);
 
   return (
-    <SafeAreaView style={styles.safe} edges={['top']}>
+    <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
       <View style={styles.head}>
         <BackButton onPress={() => router.back()} />
         <View style={{ flex: 1 }}>
           <Text style={styles.h1}>Notifications</Text>
-          <Text style={styles.sub}>{todayCount} nouvelles aujourd’hui</Text>
+          <Text style={styles.sub}>
+            {fresh.length ? `${fresh.length} nouvelle${fresh.length > 1 ? 's' : ''}` : 'Tout est lu'}
+          </Text>
         </View>
       </View>
       <View style={{ marginTop: 14 }}>
@@ -41,7 +50,10 @@ export default function NotificationsScreen() {
             <View key={g.day} style={{ gap: 10 }}>
               <Text style={styles.group}>{g.label}</Text>
               {items.map((n) => (
-                <View key={n.id} style={[styles.card, shadow.card]}>
+                <View
+                  key={n.id}
+                  style={[styles.card, shadow.card, fresh.includes(n.id) && styles.cardNew]}
+                  accessibilityLabel={fresh.includes(n.id) ? `Nouveau : ${n.title}` : undefined}>
                   <View style={[styles.icon, { backgroundColor: n.bg }]}>
                     <Ionicons name={n.icon} size={18} color={n.tint} />
                   </View>
@@ -49,7 +61,10 @@ export default function NotificationsScreen() {
                     <Text style={styles.title}>{n.title}</Text>
                     <Text style={styles.body2}>{n.body}</Text>
                   </View>
-                  <Text style={styles.time}>{n.time}</Text>
+                  <View style={styles.side}>
+                    <Text style={styles.time}>{n.time}</Text>
+                    {fresh.includes(n.id) && <View style={styles.newDot} />}
+                  </View>
                 </View>
               ))}
             </View>
@@ -67,11 +82,15 @@ const styles = StyleSheet.create({
   h1: { fontSize: 28, fontWeight: '800', color: colors.navy },
   sub: { color: colors.muted2, marginTop: 2 },
   body: { padding: 20, gap: 16, paddingBottom: 32 },
-  group: { fontSize: 11, fontWeight: '700', color: colors.muted, letterSpacing: 0.5 },
-  card: { backgroundColor: colors.card, borderRadius: 16, padding: 12, flexDirection: 'row', alignItems: 'center', gap: 12 },
-  icon: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
-  title: { fontWeight: '800', color: colors.navy, fontSize: 14 },
+  group: { fontSize: 11, fontWeight: '700', color: colors.muted2, letterSpacing: 0.5 },
+  card: { backgroundColor: colors.card, borderRadius: radii.md, padding: 12, flexDirection: 'row', alignItems: 'center', gap: 12 },
+  icon: { width: 40, height: 40, borderRadius: radii.sm, alignItems: 'center', justifyContent: 'center' },
+  title: { fontWeight: '700', color: colors.navy, fontSize: 14 },
   body2: { color: colors.muted2, fontSize: 12, marginTop: 2 },
-  time: { color: colors.muted, fontSize: 11, alignSelf: 'flex-start', marginTop: 2 },
+  time: { color: colors.muted2, fontSize: 11, marginTop: 2 },
+  side: { alignSelf: 'stretch', alignItems: 'flex-end', gap: 8 },
+  newDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: colors.accent },
+  // New ones get a light accent border.
+  cardNew: { borderWidth: 1, borderColor: colors.accentSoft, backgroundColor: colors.card },
   empty: { color: colors.muted2, textAlign: 'center', paddingVertical: 24 },
 });

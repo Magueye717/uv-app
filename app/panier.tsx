@@ -7,6 +7,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { BackButton, Field, PrimaryButton, Segmented } from '@/components/ui';
 import { findPrivateResto, formatFcfa, paymentMethods, restoStatus } from '@/constants/data';
+import { PaymentLogo } from '@/components/PaymentLogo';
 import { colors, radii, shadow } from '@/constants/theme';
 import { useAuth } from '@/context/AuthContext';
 import { useCart } from '@/context/CartContext';
@@ -44,7 +45,7 @@ export default function Panier() {
   const missingAddress = delivery && !address.trim();
   const blocker = !status.open ? status.label : missingAddress ? 'Indique où te livrer' : null;
 
-  const back = () => (router.canGoBack() ? router.back() : router.replace('/(tabs)/resto'));
+  const back = () => (router.canGoBack() ? router.back() : router.replace({ pathname: '/(tabs)/resto', params: { vue: 'restos' } }));
 
   const order = () => {
     const method = PAYMENTS.find((p) => p.id === payment)!;
@@ -58,7 +59,7 @@ export default function Panier() {
         text: 'OK',
         onPress: () => {
           cart.clear();
-          router.dismissTo('/(tabs)/resto');
+          router.dismissTo({ pathname: '/(tabs)/resto', params: { vue: 'restos' } });
         },
       },
     ]);
@@ -74,14 +75,14 @@ export default function Panier() {
           </View>
           <Text style={styles.emptyTitle}>Ton panier est vide</Text>
           <Text style={styles.emptyText}>Choisis un restaurant et ajoute des plats ou des boissons.</Text>
-          <PrimaryButton label="Voir les restaurants" onPress={() => router.dismissTo('/(tabs)/resto')} style={{ alignSelf: 'stretch' }} />
+          <PrimaryButton label="Voir les restaurants" onPress={() => router.dismissTo({ pathname: '/(tabs)/resto', params: { vue: 'restos' } })} style={{ alignSelf: 'stretch' }} />
         </View>
       </SafeAreaView>
     );
   }
 
   return (
-    <SafeAreaView style={styles.safe} edges={['top']}>
+    <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
       <Header onBack={back} />
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <ScrollView contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
@@ -125,7 +126,7 @@ export default function Panier() {
                   <Pressable
                     onPress={() => cart.setQty(resto.id, l.id, l.qty - 1)}
                     style={styles.stepMinus}
-                    hitSlop={6}
+                    hitSlop={8}
                     accessibilityLabel={l.qty === 1 ? `Retirer ${l.name} du panier` : `Retirer un ${l.name}`}>
                     <Ionicons name={l.qty === 1 ? 'trash-outline' : 'remove'} size={15} color={l.qty === 1 ? colors.danger : colors.navy} />
                   </Pressable>
@@ -133,7 +134,7 @@ export default function Panier() {
                   <Pressable
                     onPress={() => cart.setQty(resto.id, l.id, l.qty + 1)}
                     style={styles.stepPlus}
-                    hitSlop={6}
+                    hitSlop={8}
                     accessibilityLabel={`Ajouter un ${l.name}`}>
                     <Ionicons name="add" size={15} color="#fff" />
                   </Pressable>
@@ -198,9 +199,7 @@ export default function Panier() {
                 style={[styles.card, styles.payment, on && styles.paymentOn]}
                 accessibilityRole="radio"
                 accessibilityState={{ checked: on }}>
-                <View style={[styles.payLogo, { backgroundColor: m.bg }]}>
-                  <Text style={styles.payLogoText}>{m.short}</Text>
-                </View>
+                <PaymentLogo method={m} />
                 <View style={{ flex: 1 }}>
                   <Text style={styles.payName}>{m.name}</Text>
                   <Text style={styles.muted}>
@@ -253,12 +252,12 @@ const styles = StyleSheet.create({
   head: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingTop: 8 },
   h1: { fontSize: 18, fontWeight: '800', color: colors.navy },
   body: { padding: 20, gap: 12, paddingBottom: 40 },
-  card: { backgroundColor: colors.card, borderRadius: 18, padding: 14 },
-  section: { fontSize: 16, fontWeight: '800', color: colors.navy, marginTop: 6 },
+  card: { backgroundColor: colors.card, borderRadius: radii.lg, padding: 14 },
+  section: { fontSize: 16, fontWeight: '700', color: colors.navy, marginTop: 6 },
   muted: { color: colors.muted2, fontSize: 12, marginTop: 1 },
   resto: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   restoPhoto: { width: 52, height: 52, borderRadius: radii.sm, overflow: 'hidden', alignItems: 'center', justifyContent: 'center' },
-  restoName: { fontSize: 16, fontWeight: '800', color: colors.navy },
+  restoName: { fontSize: 16, fontWeight: '700', color: colors.navy },
   status: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 3 },
   dot: { width: 7, height: 7, borderRadius: 4 },
   statusText: { fontSize: 12, fontWeight: '700' },
@@ -266,25 +265,24 @@ const styles = StyleSheet.create({
   lineDivider: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border },
   thumb: { width: 48, height: 48, borderRadius: radii.sm, overflow: 'hidden', alignItems: 'center', justifyContent: 'center' },
   lineName: { fontSize: 14, fontWeight: '700', color: colors.text },
-  linePrice: { fontSize: 13, fontWeight: '800', color: colors.primary, marginTop: 2 },
+  linePrice: { fontSize: 13, fontWeight: '700', color: colors.primary, marginTop: 2 },
   addMore: { fontSize: 14, fontWeight: '700', color: colors.primary },
   stepper: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  stepMinus: { width: 28, height: 28, borderRadius: 14, backgroundColor: colors.bg, alignItems: 'center', justifyContent: 'center' },
-  stepPlus: { width: 28, height: 28, borderRadius: 14, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center' },
-  qty: { fontWeight: '800', color: colors.navy, minWidth: 14, textAlign: 'center' },
+  // 32 px visible, 48 px to the touch with hitSlop.
+  stepMinus: { width: 32, height: 32, borderRadius: 16, backgroundColor: colors.bg, alignItems: 'center', justifyContent: 'center' },
+  stepPlus: { width: 32, height: 32, borderRadius: 16, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center' },
+  qty: { fontWeight: '700', color: colors.navy, minWidth: 14, textAlign: 'center' },
   info: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 4 },
   infoText: { flex: 1, fontSize: 13, color: colors.muted2 },
   payment: { flexDirection: 'row', alignItems: 'center', gap: 12, borderWidth: 1.5, borderColor: 'transparent' },
   paymentOn: { borderColor: colors.primary },
-  payLogo: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
-  payLogoText: { color: '#fff', fontWeight: '800', fontSize: 13 },
   payName: { fontSize: 15, fontWeight: '700', color: colors.navy },
   radio: { width: 22, height: 22, borderRadius: 11, borderWidth: 2, borderColor: colors.border },
   recapRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   recapKey: { fontSize: 14, color: colors.muted2 },
   recapValue: { fontSize: 14, fontWeight: '700', color: colors.text },
   divider: { height: 1, backgroundColor: colors.border, marginVertical: 2 },
-  totalLabel: { fontSize: 16, fontWeight: '800', color: colors.navy },
+  totalLabel: { fontSize: 16, fontWeight: '700', color: colors.navy },
   totalValue: { fontSize: 18, fontWeight: '800', color: colors.primary },
   empty: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 10, padding: 32 },
   emptyIcon: { width: 72, height: 72, borderRadius: 36, backgroundColor: colors.primarySoft, alignItems: 'center', justifyContent: 'center', marginBottom: 6 },

@@ -4,15 +4,18 @@ import { useEffect } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { AdCarousel, AlertStrip, CaravanCard, RestoCard } from '@/components/home';
-import { headlines, services } from '@/constants/data';
-import { colors, shadow } from '@/constants/theme';
+import { AdCarousel, AlertStrip, CaravanCard, RestoCard, TaxiCard } from '@/components/home';
+import { InProgress } from '@/components/InProgress';
+import { headlines } from '@/constants/data';
+import { colors, shadow, radii } from '@/constants/theme';
 import { useAuth } from '@/context/AuthContext';
+import { bellLabel, useNotifications } from '@/context/NotificationsContext';
 import { setupNotifications } from '@/lib/notifications';
 
 export default function HomeScreen() {
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
+  const { unread } = useNotifications();
   const name = user?.firstName ?? 'Awa';
 
   useEffect(() => {
@@ -30,41 +33,37 @@ export default function HomeScreen() {
             <Text style={styles.hello}>Bonjour, {name}</Text>
             <Text style={styles.campus}>{user?.campus ?? 'UGB · Campus social'}</Text>
           </View>
-          <Pressable onPress={() => router.push('/notifications')} style={styles.bell}>
+          <Pressable
+            onPress={() => router.push('/notifications')}
+            style={styles.bell}
+            accessibilityRole="button"
+            accessibilityLabel={bellLabel(unread.length)}>
             <Ionicons name="notifications-outline" size={22} color="#fff" />
-            <View style={styles.dot} />
+            {unread.length > 0 && <View style={styles.dot} />}
           </Pressable>
         </View>
       </View>
 
       <ScrollView contentContainerStyle={styles.body} showsVerticalScrollIndicator={false}>
         <AlertStrip />
+        {/* What the student has going on comes first; the tabs cover the rest (no services grid). */}
+        <InProgress />
         <CaravanCard />
+        <TaxiCard />
         <RestoCard />
-
-        <Text style={styles.section}>Services</Text>
-        <View style={styles.grid}>
-          {services.map((s) => (
-            <Pressable key={s.key} style={styles.service} onPress={() => router.push(s.href as never)}>
-              <View style={styles.serviceIcon}>
-                <Ionicons name={s.icon} size={22} color={colors.primary} />
-              </View>
-              <Text style={styles.serviceLabel}>{s.label}</Text>
-            </Pressable>
-          ))}
-        </View>
 
         <AdCarousel />
 
         <Text style={styles.section}>À la une</Text>
         {headlines.map((h) => (
           <View key={h.id} style={[styles.news, shadow.card]}>
-            <View style={[styles.newsIcon, { backgroundColor: h.bg }]}>
-              <Ionicons name={h.icon} size={18} color={h.tint} />
+            {/* One neutral style; red only for what is urgent (a dish running out…). */}
+            <View style={[styles.newsIcon, { backgroundColor: h.urgent ? colors.dangerBg : colors.primarySoft }]}>
+              <Ionicons name={h.icon} size={18} color={h.urgent ? colors.dangerText : colors.primary} />
             </View>
             <View style={{ flex: 1 }}>
               <View style={styles.newsTop}>
-                <Text style={[styles.newsTag, { color: h.tint }]}>{h.tag.toUpperCase()}</Text>
+                <Text style={[styles.newsTag, { color: h.urgent ? colors.dangerText : colors.muted2 }]}>{h.tag.toUpperCase()}</Text>
                 <Text style={styles.newsTime}>{h.time}</Text>
               </View>
               <Text style={styles.newsTitle}>{h.title}</Text>
@@ -85,8 +84,8 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primary,
     paddingHorizontal: 20,
     paddingBottom: 20,
-    borderBottomLeftRadius: 28,
-    borderBottomRightRadius: 28,
+    borderBottomLeftRadius: radii.xl,
+    borderBottomRightRadius: radii.xl,
   },
   row: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   avatar: {
@@ -97,7 +96,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  avatarText: { color: '#fff', fontWeight: '800' },
+  avatarText: { color: '#fff', fontWeight: '700' },
   hello: { color: '#fff', fontSize: 20, fontWeight: '800' },
   campus: { color: 'rgba(255,255,255,0.8)', marginTop: 2 },
   bell: {
@@ -120,21 +119,9 @@ const styles = StyleSheet.create({
   body: { padding: 20, paddingBottom: 32, gap: 14 },
   muted: { color: colors.muted2, fontSize: 13, marginTop: 2 },
   section: { fontSize: 20, fontWeight: '800', color: colors.navy, marginTop: 8 },
-  grid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' },
-  // 3 per row: 6 services fill two full rows.
-  service: { width: '31%', alignItems: 'center', gap: 8, marginBottom: 14 },
-  serviceIcon: {
-    width: 64,
-    height: 64,
-    borderRadius: 18,
-    backgroundColor: colors.primarySoft,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  serviceLabel: { fontSize: 12, color: colors.navy, fontWeight: '600', textAlign: 'center' },
   news: {
     backgroundColor: colors.card,
-    borderRadius: 18,
+    borderRadius: radii.lg,
     padding: 14,
     flexDirection: 'row',
     gap: 12,
@@ -143,12 +130,12 @@ const styles = StyleSheet.create({
   newsIcon: {
     width: 40,
     height: 40,
-    borderRadius: 12,
+    borderRadius: radii.sm,
     alignItems: 'center',
     justifyContent: 'center',
   },
   newsTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 2 },
-  newsTag: { fontSize: 10, fontWeight: '800', letterSpacing: 0.4 },
-  newsTime: { fontSize: 11, color: colors.muted },
-  newsTitle: { fontWeight: '800', color: colors.navy, fontSize: 14 },
+  newsTag: { fontSize: 10, fontWeight: '700', letterSpacing: 0.4 },
+  newsTime: { fontSize: 11, color: colors.muted2 },
+  newsTitle: { fontWeight: '700', color: colors.navy, fontSize: 14 },
 });

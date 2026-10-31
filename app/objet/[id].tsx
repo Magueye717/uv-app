@@ -247,7 +247,7 @@ const styles = StyleSheet.create({
   details: { fontSize: 14, color: colors.muted2, lineHeight: 20 },
   owner: { fontSize: 13, fontWeight: '700', color: colors.successText },
   body: { paddingHorizontal: 20, marginTop: 16, gap: 12 },
-  section: { fontSize: 16, fontWeight: '800', color: colors.navy, marginTop: 4 },
+  section: { fontSize: 16, fontWeight: '700', color: colors.navy, marginTop: 4 },
   infoCard: { backgroundColor: colors.card, borderRadius: radii.lg, padding: 14, gap: 12 },
   info: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   infoIcon: { width: 36, height: 36, borderRadius: 18, backgroundColor: colors.primarySoft, alignItems: 'center', justifyContent: 'center' },

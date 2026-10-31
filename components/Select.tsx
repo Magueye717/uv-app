@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { colors } from '@/constants/theme';
+import { colors, radii } from '@/constants/theme';
 
 type Props = {
   icon: keyof typeof Ionicons.glyphMap;
@@ -75,7 +75,7 @@ export function Select({ icon, placeholder, title, value, options, onChange, onC
 const styles = StyleSheet.create({
   field: {
     minHeight: 56,
-    borderRadius: 18,
+    borderRadius: radii.md,
     backgroundColor: colors.input,
     borderWidth: 1,
     borderColor: colors.border,
@@ -90,21 +90,21 @@ const styles = StyleSheet.create({
   backdrop: { flex: 1, backgroundColor: 'rgba(15,27,76,0.4)' },
   sheet: {
     backgroundColor: colors.card,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
+    borderTopLeftRadius: radii.lg,
+    borderTopRightRadius: radii.lg,
     paddingHorizontal: 20,
     paddingTop: 10,
     paddingBottom: 12,
   },
   handle: { alignSelf: 'center', width: 40, height: 4, borderRadius: 2, backgroundColor: colors.border, marginBottom: 14 },
-  title: { fontSize: 17, fontWeight: '800', color: colors.navy, marginBottom: 8 },
+  title: { fontSize: 17, fontWeight: '700', color: colors.navy, marginBottom: 8 },
   option: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingVertical: 14,
     paddingHorizontal: 8,
-    borderRadius: 10,
+    borderRadius: radii.sm,
   },
   optionText: { fontSize: 15, color: colors.text },
 });

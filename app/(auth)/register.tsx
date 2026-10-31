@@ -4,9 +4,9 @@ import { StatusBar } from 'expo-status-bar';
 import { useCallback, useEffect, useState } from 'react';
 import { BackHandler, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import Animated, { FadeInLeft, FadeInRight, useAnimatedStyle, withTiming } from 'react-native-reanimated';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { colors } from '@/constants/theme';
+import { colors, radii } from '@/constants/theme';
 import { useAuth } from '@/context/AuthContext';
 import { accountExists, createAccount, getLinkedEmail, sendOtp } from '@/features/register/auth';
 import {
@@ -30,6 +30,7 @@ const headings: Record<Step, { title: string; subtitle?: string }> = {
 // Inscription in 3 steps. All values live here so they survive going back and forth.
 export default function RegisterScreen() {
   const { register } = useAuth();
+  const insets = useSafeAreaInsets();
   const [step, setStepState] = useState<Step>(1);
   // Slide direction of the next step: forward comes from the right, back from the left.
   const [forward, setForward] = useState(true);
@@ -123,7 +124,7 @@ export default function RegisterScreen() {
         room: user.room,
       });
     } catch {
-      setProfileError('Impossible de créer le compte. Réessayez.');
+      setProfileError('Impossible de créer le compte. Réessaie.');
       setSubmitting(false);
     }
   };
@@ -167,7 +168,7 @@ export default function RegisterScreen() {
       <View style={styles.sheet}>
         <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
           <ScrollView
-            contentContainerStyle={styles.content}
+            contentContainerStyle={[styles.content, { paddingBottom: 48 + insets.bottom }]}
             keyboardShouldPersistTaps="handled"
             showsVerticalScrollIndicator={false}>
             <Animated.View key={step} entering={(forward ? FadeInRight : FadeInLeft).duration(300)}>
@@ -243,13 +244,13 @@ const styles = StyleSheet.create({
     paddingVertical: 5,
     paddingLeft: 5,
     paddingRight: 12,
-    borderRadius: 999,
+    borderRadius: radii.pill,
     backgroundColor: 'rgba(255,255,255,0.08)',
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.2)',
   },
   brandLogo: { width: 24, height: 24, borderRadius: 12, backgroundColor: colors.orange, alignItems: 'center', justifyContent: 'center' },
-  brandText: { fontSize: 13, fontWeight: '800', color: '#fff', letterSpacing: 0.4 },
+  brandText: { fontSize: 13, fontWeight: '700', color: '#fff', letterSpacing: 0.4 },
   stepLabel: { width: 44, textAlign: 'right', fontSize: 14, fontWeight: '700', color: 'rgba(255,255,255,0.7)' },
   bars: { flexDirection: 'row', gap: 6, paddingHorizontal: 20, paddingTop: 18 },
   bar: { flex: 1, height: 5, borderRadius: 3, backgroundColor: 'rgba(255,255,255,0.15)', overflow: 'hidden' },
@@ -257,6 +258,6 @@ const styles = StyleSheet.create({
   heading: { paddingHorizontal: 24, paddingTop: 20, paddingBottom: 26, gap: 6 },
   h1: { fontSize: 30, fontWeight: '800', color: '#fff', letterSpacing: -0.5 },
   subtitle: { fontSize: 15, color: 'rgba(255,255,255,0.75)', lineHeight: 21 },
-  sheet: { flex: 1, backgroundColor: colors.card, borderTopLeftRadius: 28, borderTopRightRadius: 28, overflow: 'hidden' },
+  sheet: { flex: 1, backgroundColor: colors.card, borderTopLeftRadius: radii.xl, borderTopRightRadius: radii.xl, overflow: 'hidden' },
   content: { padding: 24, paddingTop: 28, paddingBottom: 48 },
 });

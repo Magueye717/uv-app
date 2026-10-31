@@ -3,11 +3,11 @@ import { router } from 'expo-router';
 import { useState } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Field, OutlineButton, PrimaryButton } from '@/components/ui';
 import { useAuth } from '@/context/AuthContext';
-import { colors } from '@/constants/theme';
+import { colors, radii } from '@/constants/theme';
 
 export default function LoginScreen() {
   const { login } = useAuth();
@@ -24,7 +24,7 @@ export default function LoginScreen() {
           <Ionicons name="school" size={36} color={colors.primary} />
         </View>
         <Text style={styles.brand}>UV-APP</Text>
-        <Text style={styles.tagline}>Le campus dans votre poche</Text>
+        <Text style={styles.tagline}>Ton campus dans ta poche</Text>
       </View>
 
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.sheet}>
@@ -56,7 +56,7 @@ export default function LoginScreen() {
             <Text style={styles.forgot}>Mot de passe oublié ?</Text>
           </Pressable>
 
-          <PrimaryButton label="Se connecter" onPress={login} />
+          <PrimaryButton accent label="Se connecter" onPress={login} />
 
           <View style={styles.divider}>
             <View style={styles.line} />
@@ -66,8 +66,7 @@ export default function LoginScreen() {
 
           <OutlineButton label="Créer un compte" onPress={() => router.push('/(auth)/register')} />
 
-          <Text style={styles.footer}>Une application au service des étudiants</Text>
-          <SafeAreaView edges={['bottom']} />
+          <Text style={[styles.footer, { marginBottom: insets.bottom + 8 }]}>Une application au service des étudiants</Text>
         </ScrollView>
       </KeyboardAvoidingView>
     </View>
@@ -91,17 +90,17 @@ const styles = StyleSheet.create({
   sheet: {
     flex: 1,
     backgroundColor: colors.card,
-    borderTopLeftRadius: 28,
-    borderTopRightRadius: 28,
+    borderTopLeftRadius: radii.xl,
+    borderTopRightRadius: radii.xl,
     marginTop: -16,
   },
   sheetInner: { padding: 24, gap: 14, paddingTop: 28 },
   title: { fontSize: 30, fontWeight: '800', color: colors.navy },
   subtitle: { fontSize: 15, color: colors.muted2, marginTop: -6, marginBottom: 6 },
   forgotWrap: { alignSelf: 'flex-end', marginTop: -4 },
-  forgot: { color: colors.primary, fontWeight: '700', fontSize: 14 },
+  forgot: { color: colors.orangeText, fontWeight: '700', fontSize: 14 },
   divider: { flexDirection: 'row', alignItems: 'center', gap: 12, marginVertical: 4 },
   line: { flex: 1, height: 1, backgroundColor: colors.border },
-  or: { color: colors.muted, fontSize: 13 },
-  footer: { textAlign: 'center', color: colors.muted, marginTop: 8, fontSize: 13 },
+  or: { color: colors.muted2, fontSize: 13 },
+  footer: { textAlign: 'center', color: colors.muted2, marginTop: 8, fontSize: 13 },
 });

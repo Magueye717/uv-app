@@ -17,7 +17,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { colors } from '@/constants/theme';
+import { colors, radii } from '@/constants/theme';
 
 type Slide = { key: string; title: string; highlight: string; text: string };
 
@@ -26,7 +26,7 @@ const slides: Slide[] = [
     key: 'campus',
     title: 'Ta vie de campus,',
     highlight: 'tout en un seul endroit.',
-    text: 'Restos, caravanes, cours et infos du campus : tout ce dont tu as besoin à l’UGB, dans ta poche.',
+    text: 'Restos, caravanes, taxis et lieux du campus : tout ce dont tu as besoin à l’UGB, dans ta poche.',
   },
   {
     key: 'caravane',
@@ -38,14 +38,14 @@ const slides: Slide[] = [
     key: 'alertes',
     title: 'Ne rate plus',
     highlight: 'aucune info.',
-    text: 'Cours déplacés, menus du jour, objets retrouvés : reçois les alertes en temps réel.',
+    text: 'Menus du jour, départs de caravanes, objets retrouvés : reçois les alertes en temps réel.',
   },
 ];
 
 const features: { label: string; icon: keyof typeof Ionicons.glyphMap }[] = [
   { label: 'Resto', icon: 'restaurant-outline' },
   { label: 'Caravanes', icon: 'bus-outline' },
-  { label: 'Cours', icon: 'calendar-outline' },
+  { label: 'Sunu Taxi', icon: 'car-outline' },
   { label: 'Lieux', icon: 'location-outline' },
   { label: 'Objets perdus', icon: 'cube-outline' },
 ];
@@ -109,7 +109,7 @@ export default function WelcomeScreen() {
             <View style={styles.proof}>
               <View style={{ flexDirection: 'row' }}>
                 {avatars.map((a, i) => (
-                  <View key={a.initials} style={[styles.avatar, { backgroundColor: a.color, marginLeft: i ? -8 : 0 }]}>
+                  <View key={a.initials} style={[styles.avatar, { backgroundColor: a.color, marginLeft: i ? -6 : 0 }]}>
                     <Text style={styles.avatarText}>{a.initials}</Text>
                   </View>
                 ))}
@@ -203,7 +203,7 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     paddingLeft: 6,
     paddingRight: 14,
-    borderRadius: 999,
+    borderRadius: radii.pill,
     backgroundColor: 'rgba(15,27,76,0.35)',
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.25)',
@@ -216,7 +216,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  brandText: { fontSize: 15, fontWeight: '800', color: '#fff', letterSpacing: 0.4 },
+  brandText: { fontSize: 15, fontWeight: '700', color: '#fff', letterSpacing: 0.4 },
   slide: { justifyContent: 'flex-end', paddingHorizontal: 24, paddingBottom: 8 },
   title: {
     fontSize: 28,
@@ -235,19 +235,20 @@ const styles = StyleSheet.create({
     paddingVertical: 5,
     paddingLeft: 5,
     paddingRight: 12,
-    borderRadius: 999,
+    borderRadius: radii.pill,
     backgroundColor: '#fff',
   },
+  // 28 px with a small overlap: the initials stay readable.
   avatar: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
     borderWidth: 2,
     borderColor: '#fff',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  avatarText: { fontSize: 9, fontWeight: '800', color: '#fff' },
+  avatarText: { fontSize: 10, fontWeight: '700', color: '#fff' },
   proofText: { fontSize: 12, fontWeight: '600', color: colors.text },
   features: { gap: 8, paddingHorizontal: 24, paddingTop: 14, paddingBottom: 14 },
   feature: {
@@ -256,7 +257,7 @@ const styles = StyleSheet.create({
     gap: 6,
     height: 36,
     paddingHorizontal: 12,
-    borderRadius: 999,
+    borderRadius: radii.pill,
     backgroundColor: 'rgba(255,255,255,0.12)',
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.22)',
@@ -268,20 +269,20 @@ const styles = StyleSheet.create({
   dotActive: { width: 28, backgroundColor: colors.orange },
   primary: {
     height: 56,
-    borderRadius: 16,
-    backgroundColor: colors.orange,
+    borderRadius: radii.md,
+    backgroundColor: colors.accent,
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: colors.orange,
+    shadowColor: colors.accent,
     shadowOpacity: 0.35,
     shadowRadius: 14,
     shadowOffset: { width: 0, height: 6 },
     elevation: 6,
   },
-  primaryText: { fontSize: 16, fontWeight: '800', color: '#fff' },
+  primaryText: { fontSize: 16, fontWeight: '700', color: '#fff' },
   secondary: {
     height: 56,
-    borderRadius: 16,
+    borderRadius: radii.md,
     borderWidth: 1.5,
     borderColor: 'rgba(255,255,255,0.3)',
     backgroundColor: 'rgba(255,255,255,0.06)',

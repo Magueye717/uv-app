@@ -81,20 +81,21 @@ export default function RestoMenuScreen() {
           <Text style={styles.sub}>
             {resto.kind} · {location}
           </Text>
-          <View style={styles.tags}>
-            <View style={[styles.tag, { backgroundColor: status.open ? colors.successBg : colors.bg }]}>
-              <View style={[styles.dot, { backgroundColor: status.open ? colors.success : colors.muted }]} />
-              <Text style={[styles.tagText, { color: status.open ? colors.successText : colors.muted2 }]}>{status.label}</Text>
-            </View>
-            <View style={styles.tag}>
-              <Ionicons name="time-outline" size={13} color={colors.muted2} />
-              <Text style={styles.tagText}>{resto.hours}</Text>
+          {/* Status as the one pill; hours and delivery as a quiet info line. */}
+          <View style={[styles.tag, styles.statusTag, { backgroundColor: status.open ? colors.successBg : colors.bg }]}>
+            <View style={[styles.dot, { backgroundColor: status.open ? colors.success : colors.muted }]} />
+            <Text style={[styles.tagText, { color: status.open ? colors.successText : colors.muted2 }]}>{status.label}</Text>
+          </View>
+          <View style={styles.metaLine}>
+            <View style={styles.metaItem}>
+              <Ionicons name="time-outline" size={14} color={colors.muted2} />
+              <Text style={styles.metaText}>{resto.hours}</Text>
             </View>
             {resto.deliveryFee !== null && (
-              <View style={[styles.tag, { backgroundColor: colors.primarySoft }]}>
-                <Ionicons name="bicycle-outline" size={14} color={colors.primary} />
-                <Text style={[styles.tagText, { color: colors.primary }]}>
-                  {resto.deliveryFee ? `Livraison · ${formatFcfa(resto.deliveryFee)}` : 'Livraison gratuite'}
+              <View style={styles.metaItem}>
+                <Ionicons name="bicycle-outline" size={15} color={colors.primary} />
+                <Text style={[styles.metaText, { color: colors.primary, fontWeight: '600' }]}>
+                  {resto.deliveryFee ? `Livraison ${formatFcfa(resto.deliveryFee)}` : 'Livraison gratuite'}
                 </Text>
               </View>
             )}
@@ -145,7 +146,7 @@ export default function RestoMenuScreen() {
                     <Text style={styles.drinkName} numberOfLines={1}>
                       {d.name}
                     </Text>
-                    <Text style={styles.muted} numberOfLines={1}>
+                    <Text style={styles.muted} numberOfLines={2}>
                       {d.detail}
                     </Text>
                     <Text style={styles.drinkPrice}>{formatFcfa(d.price)}</Text>
@@ -244,11 +245,11 @@ function QtyControl({
   if (qty) {
     return (
       <View style={[styles.stepper, block && styles.stepperBlock]}>
-        <Pressable onPress={() => onChange(qty - 1)} style={[styles.stepMinus, block && { backgroundColor: colors.card }]} hitSlop={6} accessibilityLabel={`Retirer un ${name}`}>
+        <Pressable onPress={() => onChange(qty - 1)} style={[styles.stepMinus, block && { backgroundColor: colors.card }]} hitSlop={8} accessibilityLabel={`Retirer un ${name}`}>
           <Ionicons name="remove" size={16} color={colors.navy} />
         </Pressable>
         <Text style={styles.qty}>{qty}</Text>
-        <Pressable onPress={() => onChange(qty + 1)} style={styles.stepPlus} hitSlop={6} accessibilityLabel={`Ajouter un ${name}`}>
+        <Pressable onPress={() => onChange(qty + 1)} style={styles.stepPlus} hitSlop={8} accessibilityLabel={`Ajouter un ${name}`}>
           <Ionicons name="add" size={16} color="#fff" />
         </Pressable>
       </View>
@@ -259,7 +260,7 @@ function QtyControl({
       onPress={() => onChange(1)}
       disabled={disabled}
       style={[styles.add, block && styles.addBlock, disabled && { opacity: 0.4 }]}
-      hitSlop={6}
+      hitSlop={8}
       accessibilityRole="button"
       accessibilityLabel={`Ajouter ${name}`}>
       <Ionicons name="add" size={14} color={colors.primary} />
@@ -291,7 +292,6 @@ const styles = StyleSheet.create({
   },
   name: { fontSize: 22, fontWeight: '800', color: colors.navy },
   sub: { fontSize: 13, color: colors.muted2, marginTop: 2 },
-  tags: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 12 },
   tag: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -301,6 +301,10 @@ const styles = StyleSheet.create({
     borderRadius: radii.pill,
     backgroundColor: colors.bg,
   },
+  statusTag: { alignSelf: 'flex-start', marginTop: 12 },
+  metaLine: { flexDirection: 'row', flexWrap: 'wrap', columnGap: 14, rowGap: 6, marginTop: 10 },
+  metaItem: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  metaText: { fontSize: 13, color: colors.muted2 },
   tagText: { fontSize: 12, fontWeight: '600', color: colors.muted2 },
   dot: { width: 7, height: 7, borderRadius: 4 },
   body: { paddingHorizontal: PADDING, marginTop: 16, gap: 20 },
@@ -323,45 +327,46 @@ const styles = StyleSheet.create({
   dish: { backgroundColor: colors.card, borderRadius: radii.lg, padding: 10, flexDirection: 'row', gap: 12 },
   dishPhoto: { width: 100, height: 100, borderRadius: radii.md, overflow: 'hidden', alignItems: 'center', justifyContent: 'center' },
   dishInfo: { flex: 1, paddingVertical: 2 },
-  dishName: { fontWeight: '800', color: colors.navy, fontSize: 16 },
+  dishName: { fontWeight: '700', color: colors.navy, fontSize: 16 },
   dishBottom: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 'auto', paddingTop: 8 },
-  price: { fontWeight: '800', color: colors.primary, fontSize: 15 },
+  price: { fontWeight: '700', color: colors.primary, fontSize: 15 },
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: GRID_GAP },
   drink: { backgroundColor: colors.card, borderRadius: radii.lg, overflow: 'hidden' },
   drinkPhoto: { height: 100, overflow: 'hidden', alignItems: 'center', justifyContent: 'center' },
   drinkInfo: { padding: 10 },
-  drinkName: { fontWeight: '800', color: colors.navy, fontSize: 14 },
-  drinkPrice: { fontWeight: '800', color: colors.primary, fontSize: 14, marginTop: 6 },
+  drinkName: { fontWeight: '700', color: colors.navy, fontSize: 14 },
+  drinkPrice: { fontWeight: '700', color: colors.primary, fontSize: 14, marginTop: 6 },
   stepper: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  // 32 px visible, 48 px to the touch with hitSlop.
   stepMinus: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
     backgroundColor: colors.bg,
     alignItems: 'center',
     justifyContent: 'center',
   },
   stepPlus: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
     backgroundColor: colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  qty: { fontWeight: '800', color: colors.navy, minWidth: 12, textAlign: 'center' },
+  qty: { fontWeight: '700', color: colors.navy, minWidth: 12, textAlign: 'center' },
   add: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
     backgroundColor: colors.primarySoft,
     paddingHorizontal: 12,
-    height: 30,
+    height: 36,
     borderRadius: radii.pill,
   },
   // Same 32 px height in both states so the drink card doesn't jump.
-  addBlock: { justifyContent: 'center', height: 32, marginTop: 8 },
-  stepperBlock: { justifyContent: 'space-between', height: 32, marginTop: 8, paddingHorizontal: 2, borderRadius: radii.pill, backgroundColor: colors.bg },
+  addBlock: { justifyContent: 'center', height: 40, marginTop: 8 },
+  stepperBlock: { justifyContent: 'space-between', height: 40, marginTop: 8, paddingHorizontal: 2, borderRadius: radii.pill, backgroundColor: colors.bg },
   addText: { color: colors.primary, fontWeight: '700', fontSize: 12 },
   cartWrap: { position: 'absolute', left: 0, right: 0, bottom: 0, paddingHorizontal: PADDING, paddingTop: 12 },
   cart: {

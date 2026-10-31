@@ -4,7 +4,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { OtpInput } from '@/components/OtpInput';
 import { PrimaryButton } from '@/components/ui';
-import { colors } from '@/constants/theme';
+import { colors, radii } from '@/constants/theme';
 import { DEV_OTP, maskEmail, OTP_LENGTH, OTP_RESEND_DELAY_S, sendOtp, verifyOtp, type OtpChannel } from './auth';
 import { formatPhone, PHONE_PREFIX } from './validation';
 
@@ -65,8 +65,8 @@ export function StepOtp({ phone, linkedEmail, verified, onEditPhone, onVerified,
         setAttemptsLeft(null);
         setError(
           res.reason === 'expired'
-            ? 'Ce code a expiré. Demandez un nouveau code.'
-            : 'Trop de tentatives. Demandez un nouveau code.',
+            ? 'Ce code a expiré. Demande un nouveau code.'
+            : 'Trop de tentatives. Demande un nouveau code.',
         );
       }
     },
@@ -112,7 +112,7 @@ export function StepOtp({ phone, linkedEmail, verified, onEditPhone, onVerified,
   return (
     <View style={{ gap: 20 }}>
       <Text style={styles.intro}>
-        Entrez le code à 4 chiffres envoyé au <Text style={styles.strong}>{fullPhone}</Text>{' '}
+        Entre le code à 4 chiffres envoyé au <Text style={styles.strong}>{fullPhone}</Text>{' '}
         <Text style={styles.link} onPress={onEditPhone} accessibilityRole="link">
           Modifier
         </Text>
@@ -147,7 +147,7 @@ export function StepOtp({ phone, linkedEmail, verified, onEditPhone, onVerified,
           hitSlop={8}
           accessibilityState={{ expanded: showAlternatives }}>
           <Text style={styles.muted}>
-            Vous n’avez pas reçu le code ? <Text style={styles.link}>Autres options</Text>
+            Tu n’as pas reçu le code ? <Text style={styles.link}>Autres options</Text>
           </Text>
         </Pressable>
 
@@ -186,14 +186,14 @@ const styles = StyleSheet.create({
   muted: { fontSize: 14, color: colors.muted2, textAlign: 'center' },
   error: { fontSize: 13, fontWeight: '600', color: colors.danger, textAlign: 'center' },
   notice: { fontSize: 13, color: colors.success, textAlign: 'center' },
-  dev: { fontSize: 12, color: colors.muted, textAlign: 'center' },
+  dev: { fontSize: 12, color: colors.muted2, textAlign: 'center' },
   alternatives: { alignSelf: 'stretch', gap: 10 },
   alt: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
     padding: 12,
-    borderRadius: 16,
+    borderRadius: radii.md,
     borderWidth: 1,
     borderColor: colors.border,
     backgroundColor: colors.card,
@@ -206,7 +206,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 12,
     padding: 16,
-    borderRadius: 18,
+    borderRadius: radii.lg,
     backgroundColor: colors.successBg,
   },
   successIcon: {

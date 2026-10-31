@@ -18,13 +18,16 @@ import {
   adBanners,
   campusAlert,
   caravans,
+  formatFcfa,
   mealTimes,
   publicMenus,
   schedule,
+  taxiSeatPrice,
   weekDays,
   type DishStatus,
 } from '@/constants/data';
 import { colors, radii, shadow } from '@/constants/theme';
+import { useTaxi } from '@/context/TaxiContext';
 
 const BODY_PADDING = 20;
 const AUTO_SCROLL_MS = 5000;
@@ -156,7 +159,7 @@ export function CaravanCard() {
 
   if (!next) {
     return (
-      <Pressable style={[styles.infoCard, shadow.card]} onPress={() => router.push('/(tabs)/caravanes')}>
+      <Pressable style={[styles.infoCard, shadow.card]} onPress={() => router.push({ pathname: '/(tabs)/caravanes', params: { vue: 'caravanes' } })}>
         <View style={styles.rowBetween}>
           <View style={styles.label}>
             <Ionicons name="bus" size={12} color={colors.primary} />
@@ -207,7 +210,7 @@ export function CaravanCard() {
       </View>
 
       {othersThisWeek > 0 && (
-        <Pressable style={styles.more} onPress={() => router.push('/(tabs)/caravanes')}>
+        <Pressable style={styles.more} onPress={() => router.push({ pathname: '/(tabs)/caravanes', params: { vue: 'caravanes' } })}>
           <Text style={styles.moreText}>
             {othersThisWeek} autre{othersThisWeek > 1 ? 's' : ''} départ{othersThisWeek > 1 ? 's' : ''} cette semaine
           </Text>
@@ -246,6 +249,73 @@ function findNextCourse(now: number) {
     return { course, status: `${when} ${course.start}`, tone: colors.muted2 };
   }
   return null;
+}
+
+/** Sunu Taxi on the home screen: the next open shared ride, one tap to join. */
+export function TaxiCard() {
+  const now = useNow();
+  const { trips, me } = useTaxi();
+  const open = trips
+    .filter((t) => !t.departed && t.departureAt > now && !t.passengers.includes(me) && t.passengers.length < t.seats)
+    .sort((a, b) => a.departureAt - b.departureAt);
+  const next = open[0];
+  const go = () => router.push({ pathname: '/(tabs)/caravanes', params: { vue: 'taxi' } });
+
+  return (
+    <View style={[styles.infoCard, shadow.card]}>
+      <View style={styles.rowBetween}>
+        <View style={styles.label}>
+          <Ionicons name="car" size={12} color={colors.primary} />
+          <Text style={styles.labelText}>SUNU TAXI</Text>
+        </View>
+        {next && <Text style={styles.timeLeft}>{formatTimeLeft(next.departureAt - now)}</Text>}
+      </View>
+
+      {next ? (
+        <>
+          <View style={styles.route}>
+            <Text style={styles.city} numberOfLines={1}>
+              {next.from.split(' · ').pop()}
+            </Text>
+            <View style={styles.link}>
+              <Ionicons name="arrow-forward" size={12} color={colors.primary} />
+            </View>
+            <Text style={[styles.city, { flexShrink: 1 }]} numberOfLines={1}>
+              {next.to.split(' · ').pop()}
+            </Text>
+          </View>
+          <View style={styles.rowBetween}>
+            <View style={{ gap: 2, flexShrink: 1 }}>
+              <Text style={styles.detail}>{formatFcfa(taxiSeatPrice(next))} / place</Text>
+              <Text style={styles.seats}>
+                {next.seats - next.passengers.length} place{next.seats - next.passengers.length > 1 ? 's' : ''} libre
+                {next.seats - next.passengers.length > 1 ? 's' : ''}
+              </Text>
+            </View>
+            <Pressable style={styles.cta} onPress={go} accessibilityRole="button">
+              <Text style={styles.ctaText}>Rejoindre</Text>
+            </Pressable>
+          </View>
+        </>
+      ) : (
+        <View style={styles.rowBetween}>
+          <Text style={[styles.detail, { flexShrink: 1 }]}>Aucun trajet ouvert. Partage le prix d’un taxi avec d’autres étudiants.</Text>
+          <Pressable style={styles.cta} onPress={go} accessibilityRole="button">
+            <Text style={styles.ctaText}>Proposer</Text>
+          </Pressable>
+        </View>
+      )}
+
+      {open.length > 1 && (
+        <Pressable style={styles.more} onPress={go}>
+          <Text style={styles.moreText}>
+            {open.length - 1} autre{open.length > 2 ? 's' : ''} trajet{open.length > 2 ? 's' : ''} ouvert{open.length > 2 ? 's' : ''}
+          </Text>
+          <Ionicons name="chevron-forward" size={14} color={colors.primary} />
+        </Pressable>
+      )}
+    </View>
+  );
 }
 
 export function CourseCard() {
@@ -291,7 +361,7 @@ const dishDot: Record<DishStatus, string> = {
 };
 
 // Lunch until it ends, then dinner, then tomorrow's lunch.
-function currentMeal(now: number) {
+export function currentMeal(now: number) {
   const d = new Date(now);
   const h = d.getHours() + d.getMinutes() / 60;
   const { lunch, dinner } = mealTimes;
@@ -330,7 +400,7 @@ export function RestoCard() {
         </View>
       ))}
 
-      <Pressable style={styles.more} onPress={() => router.push('/(tabs)/resto')}>
+      <Pressable style={styles.more} onPress={() => router.push({ pathname: '/(tabs)/resto', params: { vue: 'restos' } })}>
         <Text style={styles.moreText}>Voir les restos privés</Text>
         <Ionicons name="chevron-forward" size={14} color={colors.primary} />
       </Pressable>
@@ -353,10 +423,10 @@ const styles = StyleSheet.create({
   alertTitle: { fontWeight: '700', fontSize: 14, color: colors.navy },
   alertSub: { fontSize: 12, color: colors.muted2, marginTop: 2 },
 
-  bannerTrack: { borderRadius: 22 },
+  bannerTrack: { borderRadius: radii.lg },
   banner: {
     height: 140,
-    borderRadius: 22,
+    borderRadius: radii.lg,
     padding: 18,
     justifyContent: 'space-between',
     overflow: 'hidden',
@@ -403,13 +473,13 @@ const styles = StyleSheet.create({
   dotItem: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#C9D0E2' },
   dotOn: { width: 18, backgroundColor: colors.primary },
 
-  infoCard: { backgroundColor: colors.card, borderRadius: 16, padding: 12, gap: 6 },
+  infoCard: { backgroundColor: colors.card, borderRadius: radii.md, padding: 12, gap: 6 },
   rowBetween: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
   label: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   labelText: { fontSize: 10, fontWeight: '700', color: colors.muted2, letterSpacing: 0.4 },
   timeLeft: { fontSize: 11, fontWeight: '700', color: colors.primary },
   route: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  city: { fontSize: 15, fontWeight: '800', color: colors.navy },
+  city: { fontSize: 15, fontWeight: '700', color: colors.navy },
   link: {
     width: 22,
     height: 22,
@@ -432,12 +502,12 @@ const styles = StyleSheet.create({
   moreText: { fontSize: 11, fontWeight: '700', color: colors.primary },
   mealStatus: { fontSize: 11, fontWeight: '700' },
   courseTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  courseTitle: { flexShrink: 1, fontSize: 13, fontWeight: '800', color: colors.navy },
+  courseTitle: { flexShrink: 1, fontSize: 13, fontWeight: '700', color: colors.navy },
   kind: { backgroundColor: '#EEE8FF', paddingHorizontal: 6, paddingVertical: 2, borderRadius: radii.pill },
   kindMoved: { backgroundColor: colors.warningBg },
   kindText: { fontSize: 10, fontWeight: '700', color: colors.purpleText },
   restoRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  restoName: { width: 54, fontSize: 12, fontWeight: '800', color: colors.navy },
+  restoName: { width: 54, fontSize: 12, fontWeight: '700', color: colors.navy },
   dishLine: { flex: 1, fontSize: 12, color: colors.text },
   dishDot: { fontSize: 9 },
   cta: {

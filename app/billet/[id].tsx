@@ -28,7 +28,7 @@ export default function Billet() {
   const now = useNow();
   const [transferOpen, setTransferOpen] = useState(false);
 
-  const back = () => (router.canGoBack() ? router.back() : router.replace('/(tabs)/caravanes'));
+  const back = () => (router.canGoBack() ? router.back() : router.replace({ pathname: '/(tabs)/caravanes', params: { vue: 'caravanes' } }));
   const ticket = tickets.find((t) => t.id === id);
   const c = ticket && caravans.find((x) => x.id === ticket.caravanId);
 
@@ -255,7 +255,7 @@ const styles = StyleSheet.create({
   dashes: { marginHorizontal: 18, borderTopWidth: 1.5, borderStyle: 'dashed', borderColor: colors.border },
   notch: { position: 'absolute', width: 24, height: 24, borderRadius: 12, backgroundColor: colors.bg },
   bottom: { alignItems: 'center', gap: 8, padding: 18, paddingTop: 8 },
-  code: { fontSize: 15, fontWeight: '800', color: colors.navy, letterSpacing: 2 },
+  code: { fontSize: 15, fontWeight: '700', color: colors.navy, letterSpacing: 2 },
   void: { height: 170, alignItems: 'center', justifyContent: 'center', gap: 8 },
   action: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: colors.card, borderRadius: radii.md, padding: 14 },
   actionTitle: { fontSize: 15, fontWeight: '700', color: colors.navy },

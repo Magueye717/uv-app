@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { Field, LabeledField, PrimaryButton } from '@/components/ui';
-import { colors } from '@/constants/theme';
+import { colors, radii } from '@/constants/theme';
 import {
   formatPhone,
   normalizeStudentId,
@@ -77,7 +77,7 @@ export function StepIdentification({ values, onChange, onSubmit, submitting, sub
       )}
       {submitError === 'network' && (
         <View style={styles.banner} accessibilityLiveRegion="polite">
-          <Text style={styles.bannerText}>Une erreur est survenue. Réessayez.</Text>
+          <Text style={styles.bannerText}>Une erreur est survenue. Réessaie.</Text>
         </View>
       )}
 
@@ -99,11 +99,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 8,
     padding: 12,
-    borderRadius: 14,
+    borderRadius: radii.md,
     backgroundColor: colors.dangerBg,
   },
   bannerText: { flex: 1, fontSize: 13, fontWeight: '600', color: colors.danger },
-  bannerLink: { fontSize: 13, fontWeight: '800', color: colors.orangeText, textDecorationLine: 'underline' },
+  bannerLink: { fontSize: 13, fontWeight: '700', color: colors.orangeText, textDecorationLine: 'underline' },
   login: { flexDirection: 'row', justifyContent: 'center', gap: 4 },
   muted: { fontSize: 14, color: colors.muted2 },
   link: { fontSize: 14, fontWeight: '700', color: colors.orangeText },

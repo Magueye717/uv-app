@@ -22,7 +22,7 @@ export const validatePhone = (v: string) =>
 export function validateName(value: string, field: 'prénom' | 'nom') {
   const v = value.trim();
   if (!v) return field === 'prénom' ? 'Le prénom est requis' : 'Le nom est requis';
-  return NAME_RE.test(v) ? null : 'Utilisez uniquement des lettres, des espaces ou des tirets';
+  return NAME_RE.test(v) ? null : 'Utilise uniquement des lettres, des espaces ou des tirets';
 }
 
 export const passwordRules = [

@@ -17,6 +17,7 @@ import {
 import Animated, { FadeInDown, interpolateColor, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 
 import { colors, radii } from '@/constants/theme';
+import { bellLabel, useNotifications } from '@/context/NotificationsContext';
 
 export function PrimaryButton({
   label,
@@ -169,10 +170,12 @@ export function BackButton({ onPress }: { onPress: () => void }) {
 }
 
 export function BellButton({ onPress }: { onPress: () => void }) {
+  const { unread } = useNotifications();
   return (
-    <Pressable onPress={onPress} style={styles.bell}>
+    <Pressable onPress={onPress} style={styles.bell} accessibilityRole="button" accessibilityLabel={bellLabel(unread.length)}>
       <Ionicons name="notifications-outline" size={20} color={colors.navy} />
-      <View style={styles.dot} />
+      {/* Only when something is new: a dot that's always on gets ignored. */}
+      {unread.length > 0 && <View style={styles.dot} />}
     </Pressable>
   );
 }
@@ -258,19 +261,20 @@ export function FilterChips<T extends string>({
 }
 
 const styles = StyleSheet.create({
+  // Main buttons: same 16 px corners everywhere (welcome, sign-up, checkout).
   primary: {
     backgroundColor: colors.accent,
     height: 54,
-    borderRadius: radii.pill,
+    borderRadius: radii.md,
     alignItems: 'center',
     justifyContent: 'center',
   },
   primaryLabel: { color: '#fff', fontSize: 16, fontWeight: '700' },
   accent: {
     height: 56,
-    borderRadius: 16,
-    backgroundColor: colors.orange,
-    shadowColor: colors.orange,
+    borderRadius: radii.md,
+    backgroundColor: colors.accent,
+    shadowColor: colors.accent,
     shadowOpacity: 0.3,
     shadowRadius: 14,
     shadowOffset: { width: 0, height: 6 },
@@ -278,7 +282,7 @@ const styles = StyleSheet.create({
   },
   outline: {
     height: 54,
-    borderRadius: radii.pill,
+    borderRadius: radii.md,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1.5,
@@ -290,7 +294,7 @@ const styles = StyleSheet.create({
   disabled: { opacity: 0.45 },
   field: {
     minHeight: 56,
-    borderRadius: 18,
+    borderRadius: radii.md,
     backgroundColor: colors.input,
     borderWidth: 1,
     borderColor: colors.border,
@@ -345,7 +349,7 @@ const styles = StyleSheet.create({
   filters: { gap: 8, paddingHorizontal: 20 },
   filter: {
     paddingHorizontal: 14,
-    height: 34,
+    height: 40,
     borderRadius: radii.pill,
     backgroundColor: colors.card,
     borderWidth: 1,

@@ -321,7 +321,7 @@ const styles = StyleSheet.create({
   row: { flexDirection: 'row', gap: 12 },
   sectionHead: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   sectionIcon: { width: 24, height: 24, borderRadius: 12, backgroundColor: '#FFE8D4', alignItems: 'center', justifyContent: 'center' },
-  sectionTitle: { flex: 1, fontSize: 13, fontWeight: '800', color: colors.navy, textTransform: 'uppercase', letterSpacing: 0.6 },
+  sectionTitle: { flex: 1, fontSize: 13, fontWeight: '700', color: colors.navy, textTransform: 'uppercase', letterSpacing: 0.6 },
   sectionHint: { fontSize: 11, fontWeight: '700', color: colors.orangeText },
   // Navy when picked, like the welcome screen.
   campus: {
@@ -334,8 +334,8 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   campusOn: { backgroundColor: colors.navy, borderColor: colors.navy },
-  campusIcon: { width: 36, height: 36, borderRadius: 12, backgroundColor: colors.card, alignItems: 'center', justifyContent: 'center', marginBottom: 6 },
-  campusLabel: { fontSize: 16, fontWeight: '800', color: colors.navy },
+  campusIcon: { width: 36, height: 36, borderRadius: radii.sm, backgroundColor: colors.card, alignItems: 'center', justifyContent: 'center', marginBottom: 6 },
+  campusLabel: { fontSize: 16, fontWeight: '700', color: colors.navy },
   campusDetail: { fontSize: 12, color: colors.muted2 },
   check: { position: 'absolute', top: 10, right: 10, width: 22, height: 22, borderRadius: 11, backgroundColor: ACCENT, alignItems: 'center', justifyContent: 'center' },
   toggle: { flexDirection: 'row', padding: 4, borderRadius: radii.pill, backgroundColor: colors.input },

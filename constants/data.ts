@@ -45,6 +45,8 @@ export const headlines: {
   title: string;
   subtitle: string;
   time: string;
+  /** Needs attention now (sold out…): the only headlines shown in red. */
+  urgent?: boolean;
 }[] = [
   {
     id: 'h1',
@@ -63,6 +65,7 @@ export const headlines: {
     tint: colors.dangerText,
     bg: '#FDECEE',
     title: 'Thiébou dieun épuisé',
+    urgent: true,
     subtitle: 'Plus de portions ce midi · Vermicelle et Mafé yap encore servis',
     time: '5 min',
   },
@@ -109,7 +112,7 @@ export const adBanners: {
 }[] = [
   {
     id: 'ad1',
-    title: '-20% sur vos forfaits\ninternet étudiants',
+    title: '-20% sur tes forfaits\ninternet étudiants',
     subtitle: "Offre valable jusqu'au 30 nov.",
     cta: "J'en profite",
     bg: colors.purple,
@@ -117,7 +120,7 @@ export const adBanners: {
   {
     id: 'ad2',
     title: 'Chez Marie · Grillades',
-    subtitle: 'Menu étudiant à 1 000 F ce soir',
+    subtitle: 'Menu étudiant à 1 000 FCFA ce soir',
     cta: 'Voir',
     bg: colors.orange,
     href: '/resto/r2',
@@ -128,7 +131,7 @@ export const adBanners: {
     subtitle: 'Gratuite pour ta première commande',
     cta: 'Commander',
     bg: colors.green,
-    href: '/(tabs)/resto',
+    href: '/(tabs)/resto?vue=restos',
   },
 ];
 
@@ -226,7 +229,21 @@ export function formatDateTime(ts: number) {
   return `${DAYS[d.getDay()]} ${d.getDate()} ${MONTHS[d.getMonth()]} à ${d.getHours()}h${min}`;
 }
 
-export const paymentMethods = [
+export type PaymentMethod = {
+  id: string;
+  name: string;
+  detail: string;
+  /** Initials on the brand-color badge, shown while there's no logo file. */
+  short: string;
+  bg: string;
+  /**
+   * Official logo from the provider's merchant / brand kit, e.g.
+   * require('@/assets/images/payments/wave.png'). Use only files they provide, per their brand rules.
+   */
+  logo?: number;
+};
+
+export const paymentMethods: PaymentMethod[] = [
   { id: 'wave', name: 'Wave', detail: 'Compte lié · 77 ••• •• 28', short: 'W', bg: '#1DC8F2' },
   { id: 'om', name: 'Orange Money', detail: 'Paiement mobile instantané', short: 'OM', bg: '#FF7900' },
 ];

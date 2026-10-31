@@ -5,7 +5,8 @@ import { caravanState, formatFcfa, type Caravan, type CaravanOrganizer, type Org
 import { colors, radii } from '@/constants/theme';
 
 const LEVELS: Record<OrganizerLevel, { label: string; icon: keyof typeof Ionicons.glyphMap; fg: string; bg: string }> = {
-  confirme: { label: 'Confirmé', icon: 'shield-checkmark', fg: colors.successText, bg: colors.successBg },
+  // Not "Confirmé": that word is used for trips that reached their minimum, on the same card.
+  confirme: { label: 'Certifié', icon: 'shield-checkmark', fg: colors.successText, bg: colors.successBg },
   verifie: { label: 'Vérifié', icon: 'shield-checkmark-outline', fg: colors.primary, bg: colors.primarySoft },
   nouveau: { label: 'Nouveau', icon: 'sparkles-outline', fg: colors.purpleText, bg: '#EEE8FF' },
 };
@@ -32,16 +33,20 @@ export function OrganizerLine({ organizer: o }: { organizer: CaravanOrganizer })
   );
 }
 
-/** Organizer + price, route line, and date / time / meeting point. */
-export function CaravanSummary({ caravan: c }: { caravan: Caravan }) {
+/**
+ * Organizer (or price), route line, and date / time / meeting point.
+ * The organizer gets the whole first row so its name isn't cut; the list shows the price in its footer.
+ */
+export function CaravanSummary({ caravan: c, header = 'organizer' }: { caravan: Caravan; header?: 'organizer' | 'price' }) {
   return (
     <View style={{ gap: 12 }}>
-      <View style={styles.rowBetween}>
-        <View style={{ flex: 1 }}>
-          <OrganizerLine organizer={c.organizer} />
-        </View>
-        <Text style={styles.price}>{formatFcfa(c.price)}</Text>
-      </View>
+      {header === 'organizer' ? (
+        <OrganizerLine organizer={c.organizer} />
+      ) : (
+        <Text style={styles.price}>
+          {formatFcfa(c.price)} <Text style={styles.perSeat}>/ place</Text>
+        </Text>
+      )}
 
       <View style={styles.route}>
         <View>
@@ -123,14 +128,15 @@ function Meta({ icon, text }: { icon: keyof typeof Ionicons.glyphMap; text: stri
 const styles = StyleSheet.create({
   rowBetween: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
   organizer: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  organizerName: { flexShrink: 1, fontSize: 13, fontWeight: '800', color: colors.navy },
+  organizerName: { flexShrink: 1, fontSize: 13, fontWeight: '700', color: colors.navy },
   level: { flexDirection: 'row', alignItems: 'center', gap: 3, paddingHorizontal: 7, paddingVertical: 2, borderRadius: radii.pill },
-  levelText: { fontSize: 10, fontWeight: '800' },
+  levelText: { fontSize: 10, fontWeight: '700' },
   rating: { flexDirection: 'row', alignItems: 'center', gap: 2 },
   ratingText: { fontSize: 11, fontWeight: '700', color: colors.muted2 },
-  price: { fontSize: 17, fontWeight: '800', color: colors.primary },
+  price: { fontSize: 17, fontWeight: '700', color: colors.primary },
+  perSeat: { fontSize: 12, fontWeight: '600', color: colors.muted2 },
   route: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  city: { fontSize: 17, fontWeight: '800', color: colors.navy },
+  city: { fontSize: 17, fontWeight: '700', color: colors.navy },
   cityLabel: { fontSize: 11, color: colors.muted2, marginTop: 1 },
   track: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 6 },
   line: { flex: 1, height: 1.5, backgroundColor: colors.border },

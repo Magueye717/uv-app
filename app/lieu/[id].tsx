@@ -34,7 +34,7 @@ export default function LieuScreen() {
       <ScrollView contentContainerStyle={{ paddingBottom: insets.bottom + 24 }} showsVerticalScrollIndicator={false}>
         <View style={[styles.hero, { backgroundColor: p.bg }]}>
           {p.photos.length ? (
-            <Gallery photos={p.photos} name={p.name} counterTop={insets.top + 16} />
+            <Gallery photos={p.photos} name={p.name} />
           ) : (
             <View style={styles.noPhoto}>
               <Ionicons name={p.icon} size={56} color={p.tint} />
@@ -81,7 +81,7 @@ export default function LieuScreen() {
  * Full-width photos that slide on their own every 3 seconds and can be swiped (pauses while touched).
  * Same pattern as the home ad carousel: in the normal layout, explicit page size.
  */
-function Gallery({ photos, name, counterTop }: { photos: (number | string)[]; name: string; counterTop: number }) {
+function Gallery({ photos, name }: { photos: (number | string)[]; name: string }) {
   const { width } = useWindowDimensions();
   const ref = useRef<ScrollViewInstance>(null);
   const [index, setIndex] = useState(0);
@@ -142,7 +142,7 @@ function Gallery({ photos, name, counterTop }: { photos: (number | string)[]; na
       </ScrollView>
       {multiple && (
         <>
-          <View style={[styles.counter, { top: counterTop }]} pointerEvents="none">
+          <View style={styles.counter} pointerEvents="none">
             <Text style={styles.counterText}>
               {index + 1}/{photos.length}
             </Text>
@@ -185,7 +185,8 @@ const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.bg },
   hero: { height: HERO_HEIGHT },
   noPhoto: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  counter: { position: 'absolute', right: 20, paddingHorizontal: 10, paddingVertical: 4, borderRadius: radii.pill, backgroundColor: 'rgba(15,27,76,0.6)' },
+  // Bottom-right, above the overlapping card: the top-right corner is the phone's clock.
+  counter: { position: 'absolute', right: 20, bottom: 38, paddingHorizontal: 10, paddingVertical: 4, borderRadius: radii.pill, backgroundColor: 'rgba(15,27,76,0.6)' },
   counterText: { fontSize: 12, fontWeight: '700', color: '#fff' },
   // Above the info card, which overlaps the bottom of the photo.
   dots: { position: 'absolute', bottom: 40, left: 0, right: 0, flexDirection: 'row', justifyContent: 'center', gap: 8 },
@@ -215,5 +216,5 @@ const styles = StyleSheet.create({
   infoLabel: { fontSize: 12, color: colors.muted2 },
   infoValue: { fontSize: 14, fontWeight: '700', color: colors.navy, marginTop: 1 },
   divider: { height: StyleSheet.hairlineWidth, backgroundColor: colors.border },
-  note: { textAlign: 'center', fontSize: 12, color: colors.muted },
+  note: { textAlign: 'center', fontSize: 12, color: colors.muted2 },
 });

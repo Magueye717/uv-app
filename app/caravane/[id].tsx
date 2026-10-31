@@ -7,11 +7,14 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { CaravanSummary, FillBar, OrganizerLine } from '@/components/caravan';
 import { BackButton } from '@/components/ui';
 import { caravanState, caravans, formatDateTime, formatFcfa, paymentMethods } from '@/constants/data';
+import { PaymentLogo } from '@/components/PaymentLogo';
 import { colors, radii, shadow } from '@/constants/theme';
 import { useTickets } from '@/context/TicketsContext';
 import { scheduleCaravanReminder } from '@/lib/notifications';
 
 const SEATS_PER_ROW = 4;
+// Seats 1 and 4 of each row of 4 are by the window.
+const isWindow = (n: number) => n % SEATS_PER_ROW === 1 || n % SEATS_PER_ROW === 0;
 const SERVICE_FEE = 0;
 
 // Mock: spread the occupied seats across the bus, stable per caravan.
@@ -32,6 +35,12 @@ export default function CaravaneReservation() {
   const existing = ticketFor(c.id);
   const taken = useMemo(() => takenSeats(c.id, c.totalSeats, c.seats), [c.id, c.totalSeats, c.seats]);
   const [seat, setSeat] = useState<number | null>(null);
+  const [showMap, setShowMap] = useState(false);
+  // Front-most free window seat, else the front-most free seat.
+  const pickForMe = () => {
+    const free = Array.from({ length: c.totalSeats }, (_, i) => i + 1).filter((n) => !taken.has(n));
+    setSeat(free.find(isWindow) ?? free[0] ?? null);
+  };
   // Only one stop: nothing to choose.
   const [stop, setStop] = useState<string | null>(c.stops.length === 1 ? c.stops[0] : null);
   const [payment, setPayment] = useState(paymentMethods[0].id);
@@ -65,7 +74,8 @@ export default function CaravaneReservation() {
 
       <ScrollView contentContainerStyle={styles.body} showsVerticalScrollIndicator={false}>
         <View style={[styles.card, shadow.card, { gap: 14 }]}>
-          <CaravanSummary caravan={c} />
+          {/* The organizer is detailed in the card below: no need to repeat it here. */}
+          <CaravanSummary caravan={c} header="price" />
           <FillBar caravan={c} />
         </View>
 
@@ -104,44 +114,88 @@ export default function CaravaneReservation() {
         ) : (
           <>
           <View style={styles.sectionRow}>
-            <Text style={styles.section}>Choisis ta place</Text>
+            <Text style={styles.section}>Ta place</Text>
             <Text style={styles.free}>{c.seats} places libres</Text>
           </View>
-          <View style={styles.legend}>
-            <Legend style={styles.seatFree} label="Libre" />
-            <Legend style={styles.seatTaken} label="Occupée" />
-            <Legend style={styles.seatSelected} label="Choisie" />
-          </View>
 
-          <View style={[styles.card, styles.busCard, shadow.card]}>
-            <View style={styles.front}>
-              <Ionicons name="bus-outline" size={12} color={colors.primary} />
-              <Text style={styles.frontText}>Avant du bus</Text>
+          {/* The 64-seat plan is long: folded by default, one tap picks a good seat. */}
+          {!showMap ? (
+            <View style={[styles.card, shadow.card, { gap: 12 }]}>
+              {seat ? (
+                <View style={styles.picked}>
+                  <View style={styles.pickedSeat}>
+                    <Text style={styles.pickedSeatText}>{seat}</Text>
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.payName}>Place n° {seat}</Text>
+                    <Text style={styles.muted}>
+                      {isWindow(seat) ? 'Fenêtre' : 'Couloir'} · rangée {Math.ceil(seat / SEATS_PER_ROW)}
+                    </Text>
+                  </View>
+                  <Pressable onPress={() => setShowMap(true)} hitSlop={10} accessibilityRole="button">
+                    <Text style={styles.change}>Changer</Text>
+                  </Pressable>
+                </View>
+              ) : (
+                <Text style={styles.muted}>Laisse-nous choisir, ou regarde le plan du bus.</Text>
+              )}
+              {!seat && (
+                <View style={styles.seatActions}>
+                  <Pressable style={[styles.seatAction, styles.seatActionMain]} onPress={pickForMe} accessibilityRole="button">
+                    <Ionicons name="sparkles-outline" size={16} color="#fff" />
+                    <Text style={[styles.seatActionText, { color: '#fff' }]}>Choisis pour moi</Text>
+                  </Pressable>
+                  <Pressable style={styles.seatAction} onPress={() => setShowMap(true)} accessibilityRole="button">
+                    <Ionicons name="grid-outline" size={16} color={colors.primary} />
+                    <Text style={styles.seatActionText}>Voir le plan</Text>
+                  </Pressable>
+                </View>
+              )}
             </View>
-            {rows.map((row) => (
-              <View key={row[0]} style={styles.seatRow}>
-                {row.map((n, i) => {
-                  const isTaken = taken.has(n);
-                  const isSelected = seat === n;
-                  return (
-                    <Pressable
-                      key={n}
-                      disabled={isTaken}
-                      onPress={() => setSeat(isSelected ? null : n)}
-                      style={[
-                        styles.seat,
-                        i === 2 && styles.afterAisle,
-                        isTaken ? styles.seatTaken : isSelected ? styles.seatSelected : styles.seatFree,
-                      ]}>
-                      <Text style={[styles.seatText, isTaken && { color: colors.muted }, isSelected && { color: '#fff' }]}>
-                        {n}
-                      </Text>
-                    </Pressable>
-                  );
-                })}
+          ) : (
+            <>
+              <View style={styles.legend}>
+                <Legend style={styles.seatFree} label="Libre" />
+                <Legend style={styles.seatTaken} label="Occupée" />
+                <Legend style={styles.seatSelected} label="Choisie" />
               </View>
-            ))}
-          </View>
+              <View style={[styles.card, styles.busCard, shadow.card]}>
+                <View style={styles.front}>
+                  <Ionicons name="bus-outline" size={12} color={colors.primary} />
+                  <Text style={styles.frontText}>Avant du bus</Text>
+                </View>
+                {rows.map((row) => (
+                  <View key={row[0]} style={styles.seatRow}>
+                    {row.map((n, i) => {
+                      const isTaken = taken.has(n);
+                      const isSelected = seat === n;
+                      return (
+                        <Pressable
+                          key={n}
+                          disabled={isTaken}
+                          onPress={() => {
+                            setSeat(n);
+                            setShowMap(false);
+                          }}
+                          accessibilityLabel={isTaken ? `Place ${n}, occupée` : `Place ${n}`}
+                          style={[
+                            styles.seat,
+                            i === 2 && styles.afterAisle,
+                            isTaken ? styles.seatTaken : isSelected ? styles.seatSelected : styles.seatFree,
+                          ]}>
+                          {isTaken ? (
+                            <Ionicons name="close" size={16} color={colors.muted} />
+                          ) : (
+                            <Text style={[styles.seatText, isSelected && { color: '#fff' }]}>{n}</Text>
+                          )}
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                ))}
+              </View>
+            </>
+          )}
 
           {c.stops.length > 1 && (
             <>
@@ -170,9 +224,7 @@ export default function CaravaneReservation() {
             const on = m.id === payment;
             return (
               <Pressable key={m.id} onPress={() => setPayment(m.id)} style={[styles.card, styles.payment, on && styles.paymentOn]}>
-                <View style={[styles.payLogo, { backgroundColor: m.bg }]}>
-                  <Text style={styles.payLogoText}>{m.short}</Text>
-                </View>
+                <PaymentLogo method={m} />
                 <View style={{ flex: 1 }}>
                   <Text style={styles.payName}>{m.name}</Text>
                   <Text style={styles.muted}>{m.detail}</Text>
@@ -253,9 +305,9 @@ const styles = StyleSheet.create({
   },
   h1: { fontSize: 18, fontWeight: '800', color: colors.navy },
   body: { padding: 20, gap: 12, paddingBottom: 32 },
-  card: { backgroundColor: colors.card, borderRadius: 18, padding: 14 },
+  card: { backgroundColor: colors.card, borderRadius: radii.lg, padding: 14 },
   sectionRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 4 },
-  section: { fontSize: 16, fontWeight: '800', color: colors.navy, marginTop: 4 },
+  section: { fontSize: 16, fontWeight: '700', color: colors.navy, marginTop: 4 },
   free: { fontSize: 12, fontWeight: '700', color: colors.success },
   legend: { flexDirection: 'row', gap: 14 },
   legendItem: { flexDirection: 'row', alignItems: 'center', gap: 6 },
@@ -274,26 +326,42 @@ const styles = StyleSheet.create({
   },
   frontText: { fontSize: 11, color: colors.primary, fontWeight: '700' },
   seatRow: { flexDirection: 'row', gap: 8 },
-  seat: { width: 36, height: 30, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
-  afterAisle: { marginLeft: 36 },
+  seat: { width: 40, height: 40, borderRadius: radii.sm, alignItems: 'center', justifyContent: 'center' },
+  afterAisle: { marginLeft: 28 },
   seatFree: { backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border },
   seatTaken: { backgroundColor: colors.border },
   seatSelected: { backgroundColor: colors.primary },
-  seatText: { fontSize: 11, fontWeight: '700', color: colors.navy },
+  seatText: { fontSize: 13, fontWeight: '700', color: colors.navy },
+  picked: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  pickedSeat: { width: 44, height: 44, borderRadius: radii.sm, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center' },
+  pickedSeatText: { color: '#fff', fontWeight: '700', fontSize: 16 },
+  change: { color: colors.orangeText, fontWeight: '700' },
+  seatActions: { flexDirection: 'row', gap: 10 },
+  seatAction: {
+    flex: 1,
+    flexDirection: 'row',
+    gap: 6,
+    height: 44,
+    borderRadius: radii.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1.5,
+    borderColor: colors.primary,
+  },
+  seatActionMain: { backgroundColor: colors.primary },
+  seatActionText: { fontSize: 14, fontWeight: '700', color: colors.primary },
   payment: { flexDirection: 'row', alignItems: 'center', gap: 12, borderWidth: 1.5, borderColor: 'transparent' },
   paymentOn: { borderColor: colors.primary },
-  payLogo: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
-  payLogoText: { color: '#fff', fontWeight: '800', fontSize: 13 },
-  payName: { fontWeight: '800', color: colors.navy },
+  payName: { fontWeight: '700', color: colors.navy },
   muted: { color: colors.muted2, fontSize: 12, marginTop: 1 },
   radio: { width: 20, height: 20, borderRadius: 10, borderWidth: 1.5, borderColor: colors.border },
-  recapTitle: { fontWeight: '800', color: colors.navy, marginBottom: 2 },
+  recapTitle: { fontWeight: '700', color: colors.navy, marginBottom: 2 },
   recapRow: { flexDirection: 'row', justifyContent: 'space-between' },
   recapKey: { color: colors.muted2, fontSize: 13 },
   recapValue: { color: colors.navy, fontSize: 13, fontWeight: '600' },
   divider: { height: 1, backgroundColor: colors.border, marginVertical: 4 },
-  totalLabel: { fontWeight: '800', color: colors.navy },
-  totalValue: { fontWeight: '800', color: colors.primary, fontSize: 16 },
+  totalLabel: { fontWeight: '700', color: colors.navy },
+  totalValue: { fontWeight: '700', color: colors.primary, fontSize: 16 },
   pay: {
     flexDirection: 'row',
     gap: 8,
@@ -306,12 +374,12 @@ const styles = StyleSheet.create({
   },
   payDisabled: { backgroundColor: colors.tabInactive },
   payText: { color: '#fff', fontWeight: '700', fontSize: 15 },
-  note: { textAlign: 'center', color: colors.muted, fontSize: 12 },
+  note: { textAlign: 'center', color: colors.muted2, fontSize: 12 },
   guarantee: { flexDirection: 'row', alignItems: 'flex-start', gap: 8 },
   guaranteeText: { flex: 1, fontSize: 13, color: colors.text, lineHeight: 18 },
   stops: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   already: { alignItems: 'center', gap: 8, paddingVertical: 20 },
-  alreadyTitle: { fontSize: 16, fontWeight: '800', color: colors.navy, textAlign: 'center' },
+  alreadyTitle: { fontSize: 16, fontWeight: '700', color: colors.navy, textAlign: 'center' },
   alreadyText: { fontSize: 13, color: colors.muted2, textAlign: 'center', lineHeight: 18 },
   alreadyBtn: { marginTop: 6, backgroundColor: colors.accent, paddingHorizontal: 22, height: 42, borderRadius: radii.pill, justifyContent: 'center' },
   alreadyBtnText: { color: '#fff', fontWeight: '700' },

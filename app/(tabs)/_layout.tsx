@@ -1,14 +1,15 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Tabs } from 'expo-router';
 import { StyleSheet, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { colors } from '@/constants/theme';
 
 const icons: Record<string, keyof typeof Ionicons.glyphMap> = {
-  index: 'home',
+  index: 'home-outline',
   resto: 'restaurant-outline',
   caravanes: 'bus-outline',
-  lieux: 'location-outline',
+  lieux: 'school-outline',
   profil: 'person-outline',
 };
 
@@ -16,11 +17,14 @@ const activeIcons: Record<string, keyof typeof Ionicons.glyphMap> = {
   index: 'home',
   resto: 'restaurant',
   caravanes: 'bus',
-  lieux: 'location',
+  lieux: 'school',
   profil: 'person',
 };
 
 export default function TabLayout() {
+  // Android edge-to-edge: the system navigation bar sits over the app, so the tab bar grows by its height.
+  const insets = useSafeAreaInsets();
+  const bottom = Math.max(insets.bottom, 10);
   return (
     <Tabs
       screenOptions={({ route }) => ({
@@ -28,7 +32,7 @@ export default function TabLayout() {
         tabBarShowLabel: true,
         tabBarActiveTintColor: colors.primary,
         tabBarInactiveTintColor: colors.tabInactive,
-        tabBarStyle: styles.bar,
+        tabBarStyle: [styles.bar, { height: 62 + bottom, paddingBottom: bottom }],
         tabBarLabelStyle: styles.label,
         tabBarIcon: ({ focused, color }) => {
           const name = focused ? activeIcons[route.name] : icons[route.name];
@@ -40,9 +44,10 @@ export default function TabLayout() {
         },
       })}>
       <Tabs.Screen name="index" options={{ title: 'Accueil', tabBarLabel: ({ focused, color }) => Label('Accueil', focused, color) }} />
-      <Tabs.Screen name="resto" options={{ title: 'Resto' }} />
-      <Tabs.Screen name="caravanes" options={{ title: 'Caravanes' }} />
-      <Tabs.Screen name="lieux" options={{ title: 'Lieux' }} />
+      {/* Route names stay the same so existing links keep working; labels follow the new structure. */}
+      <Tabs.Screen name="resto" options={{ title: 'Manger' }} />
+      <Tabs.Screen name="caravanes" options={{ title: 'Trajets' }} />
+      <Tabs.Screen name="lieux" options={{ title: 'Campus' }} />
       <Tabs.Screen name="profil" options={{ title: 'Profil' }} />
     </Tabs>
   );
@@ -54,9 +59,7 @@ function Label(title: string, focused: boolean, color: string) {
 
 const styles = StyleSheet.create({
   bar: {
-    height: 88,
     paddingTop: 8,
-    paddingBottom: 18,
     borderTopWidth: 0,
     backgroundColor: colors.card,
     elevation: 12,

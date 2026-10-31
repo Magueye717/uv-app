@@ -5,7 +5,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { BackButton } from '@/components/ui';
 import { services } from '@/constants/data';
-import { colors } from '@/constants/theme';
+import { colors, radii } from '@/constants/theme';
 
 const copy: Record<string, { title: string; body: string }> = {
   objets: {
@@ -55,6 +55,6 @@ const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
   head: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 20, paddingTop: 8 },
   h1: { fontSize: 22, fontWeight: '800', color: colors.navy },
-  icon: { width: 72, height: 72, borderRadius: 22, alignItems: 'center', justifyContent: 'center', marginTop: 24 },
+  icon: { width: 72, height: 72, borderRadius: radii.lg, alignItems: 'center', justifyContent: 'center', marginTop: 24 },
   body: { color: colors.muted2, textAlign: 'center', lineHeight: 22, fontSize: 16, paddingHorizontal: 12 },
 });
