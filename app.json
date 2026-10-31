@@ -31,16 +31,30 @@
         {
           "image": "./assets/images/splash-icon.png",
           "resizeMode": "contain",
-          "backgroundColor": "#1E54D4"
+          "backgroundColor": "#0F1B4C"
         }
       ],
       [
         "expo-notifications",
         {
-          "color": "#1E54D4"
+          "color": "#0F1B4C"
         }
       ],
-      "expo-web-browser"
+      "expo-web-browser",
+      "expo-image",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "La caméra sert à scanner une carte étudiant trouvée pour prévenir son propriétaire."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "cameraPermission": "La caméra sert à photographier un objet trouvé ou perdu.",
+          "photosPermission": "Tes photos servent à illustrer un objet trouvé ou perdu."
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true

@@ -14,6 +14,8 @@ import {
   type ViewStyle,
 } from 'react-native';
 
+import Animated, { FadeInDown, interpolateColor, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
+
 import { colors, radii } from '@/constants/theme';
 
 export function PrimaryButton({
@@ -21,19 +23,28 @@ export function PrimaryButton({
   onPress,
   loading,
   disabled,
+  accent,
   style,
 }: {
   label: string;
   onPress: () => void;
   loading?: boolean;
   disabled?: boolean;
+  /** Orange button of the welcome screen, for the sign-up / sign-in flow. */
+  accent?: boolean;
   style?: StyleProp<ViewStyle>;
 }) {
   return (
     <Pressable
       onPress={onPress}
       disabled={disabled || loading}
-      style={({ pressed }) => [styles.primary, pressed && styles.pressed, disabled && !loading && styles.disabled, style]}>
+      style={({ pressed }) => [
+        styles.primary,
+        accent && styles.accent,
+        pressed && styles.pressed,
+        disabled && !loading && styles.disabled,
+        style,
+      ]}>
       {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryLabel}>{label}</Text>}
     </Pressable>
   );
@@ -53,6 +64,9 @@ export function Field({
   prefix,
   invalid,
   secure,
+  accent = colors.primary,
+  onFocus,
+  onBlur,
   ...props
 }: TextInputProps & {
   icon?: keyof typeof Ionicons.glyphMap;
@@ -62,12 +76,34 @@ export function Field({
   invalid?: boolean;
   /** Password field with its own show / hide toggle. */
   secure?: boolean;
+  /** Border and icon color while focused. */
+  accent?: string;
 }) {
   const [hidden, setHidden] = useState(true);
+  const [focused, setFocused] = useState(false);
+  // 0 → 1 while focused: the border takes the accent color and the field lifts a little.
+  const focus = useSharedValue(0);
+  const animated = useAnimatedStyle(() => ({
+    // Animated styles win over static ones, so the error color is decided here too.
+    borderColor: invalid ? colors.danger : interpolateColor(focus.get(), [0, 1], [colors.border, accent]),
+    backgroundColor: interpolateColor(focus.get(), [0, 1], [colors.input, colors.card]),
+    shadowOpacity: focus.get() * 0.12,
+  }));
   return (
-    <View style={[styles.field, invalid && styles.fieldInvalid]}>
+    <Animated.View
+      style={[
+        styles.field,
+        { shadowColor: accent, shadowRadius: 10, shadowOffset: { width: 0, height: 4 } },
+        animated,
+        invalid && styles.fieldInvalid,
+      ]}>
       {icon ? (
-        <Ionicons name={icon} size={18} color={invalid ? colors.danger : colors.muted} style={styles.fieldIcon} />
+        <Ionicons
+          name={icon}
+          size={18}
+          color={invalid ? colors.danger : focused ? accent : colors.muted}
+          style={styles.fieldIcon}
+        />
       ) : null}
       {prefix ? (
         <View style={styles.prefix}>
@@ -79,6 +115,17 @@ export function Field({
         style={styles.input}
         autoCapitalize="none"
         secureTextEntry={secure ? hidden : undefined}
+        selectionColor={accent}
+        onFocus={(e) => {
+          setFocused(true);
+          focus.set(withTiming(1, { duration: 180 }));
+          onFocus?.(e);
+        }}
+        onBlur={(e) => {
+          setFocused(false);
+          focus.set(withTiming(0, { duration: 180 }));
+          onBlur?.(e);
+        }}
         {...props}
       />
       {secure ? (
@@ -87,7 +134,7 @@ export function Field({
         </Pressable>
       ) : null}
       {right}
-    </View>
+    </Animated.View>
   );
 }
 
@@ -105,9 +152,9 @@ export function LabeledField({
       <Text style={styles.label}>{label}</Text>
       {children}
       {error ? (
-        <Text style={styles.error} accessibilityLiveRegion="polite">
+        <Animated.Text entering={FadeInDown.duration(180)} style={styles.error} accessibilityLiveRegion="polite">
           {error}
-        </Text>
+        </Animated.Text>
       ) : null}
     </View>
   );
@@ -212,13 +259,23 @@ export function FilterChips<T extends string>({
 
 const styles = StyleSheet.create({
   primary: {
-    backgroundColor: colors.primary,
+    backgroundColor: colors.accent,
     height: 54,
     borderRadius: radii.pill,
     alignItems: 'center',
     justifyContent: 'center',
   },
   primaryLabel: { color: '#fff', fontSize: 16, fontWeight: '700' },
+  accent: {
+    height: 56,
+    borderRadius: 16,
+    backgroundColor: colors.orange,
+    shadowColor: colors.orange,
+    shadowOpacity: 0.3,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 5,
+  },
   outline: {
     height: 54,
     borderRadius: radii.pill,
@@ -226,7 +283,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     borderWidth: 1.5,
     borderColor: colors.primary,
-    backgroundColor: '#fff',
+    backgroundColor: colors.card,
   },
   outlineLabel: { color: colors.primary, fontSize: 16, fontWeight: '700' },
   pressed: { opacity: 0.86 },
@@ -252,7 +309,7 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: '#fff',
+    backgroundColor: colors.card,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
@@ -262,7 +319,7 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: '#fff',
+    backgroundColor: colors.card,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -280,7 +337,7 @@ const styles = StyleSheet.create({
   screenHead: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 20, paddingTop: 8 },
   screenTitle: { fontSize: 28, fontWeight: '800', color: colors.navy },
   screenSub: { color: colors.muted2, marginTop: 2 },
-  segment: { backgroundColor: '#E9EDF8', borderRadius: radii.pill, flexDirection: 'row', padding: 4 },
+  segment: { backgroundColor: colors.primarySoft, borderRadius: radii.pill, flexDirection: 'row', padding: 4 },
   segBtn: { flex: 1, height: 40, borderRadius: radii.pill, alignItems: 'center', justifyContent: 'center' },
   segOn: { backgroundColor: colors.primary },
   segText: { fontWeight: '700', color: colors.muted2 },
@@ -290,7 +347,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     height: 34,
     borderRadius: radii.pill,
-    backgroundColor: '#fff',
+    backgroundColor: colors.card,
     borderWidth: 1,
     borderColor: colors.border,
     alignItems: 'center',

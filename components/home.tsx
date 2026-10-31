@@ -403,7 +403,7 @@ const styles = StyleSheet.create({
   dotItem: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#C9D0E2' },
   dotOn: { width: 18, backgroundColor: colors.primary },
 
-  infoCard: { backgroundColor: '#fff', borderRadius: 16, padding: 12, gap: 6 },
+  infoCard: { backgroundColor: colors.card, borderRadius: 16, padding: 12, gap: 6 },
   rowBetween: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
   label: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   labelText: { fontSize: 10, fontWeight: '700', color: colors.muted2, letterSpacing: 0.4 },
@@ -414,7 +414,7 @@ const styles = StyleSheet.create({
     width: 22,
     height: 22,
     borderRadius: 11,
-    backgroundColor: '#E8F0FF',
+    backgroundColor: colors.primarySoft,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -441,7 +441,7 @@ const styles = StyleSheet.create({
   dishLine: { flex: 1, fontSize: 12, color: colors.text },
   dishDot: { fontSize: 9 },
   cta: {
-    backgroundColor: colors.primary,
+    backgroundColor: colors.accent,
     height: 32,
     paddingHorizontal: 16,
     borderRadius: radii.pill,

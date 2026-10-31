@@ -18,7 +18,9 @@ export type User = {
   firstName: string;
   lastName: string;
   campus: string;
-  village: string;
+  /** Null when the student lives off campus. */
+  village: string | null;
+  room: string | null;
 };
 
 export type VerifyResult =

@@ -90,7 +90,7 @@ const styles = StyleSheet.create({
   tagline: { color: 'rgba(255,255,255,0.85)', marginTop: 6, fontSize: 15 },
   sheet: {
     flex: 1,
-    backgroundColor: '#fff',
+    backgroundColor: colors.card,
     borderTopLeftRadius: 28,
     borderTopRightRadius: 28,
     marginTop: -16,

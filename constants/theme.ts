@@ -1,14 +1,23 @@
+// Palette of the welcome screen: navy + orange on white.
 export const colors = {
-  primary: '#1E54D4',
-  primaryDark: '#1646B8',
+  /** Headers, selected states, links and icons. */
+  primary: '#0F1B4C',
+  primaryDark: '#0A1338',
+  /** Light navy tint behind icons and selected rows. */
+  primarySoft: '#E9ECF5',
+  primarySofter: '#F3F4F9',
+  /** Main action buttons (Réserver, Commander, Payer…). Too light for small text: use orangeText. */
+  accent: '#F07A2A',
+  accentSoft: '#FFF1E6',
   navy: '#0F1B4C',
   text: '#121A3A',
   muted: '#8A93A8',
   muted2: '#6B7389',
-  bg: '#F3F5FB',
-  card: '#FFFFFF',
+  bg: '#ECEFF4',
+  // Soft off-white instead of pure white: less glare at full brightness.
+  card: '#FBFBF8',
   input: '#F3F5FA',
-  border: '#E8ECF4',
+  border: '#E2E6EE',
   success: '#1FA35A',
   successBg: '#E7F8EE',
   warning: '#E3921A',
@@ -42,5 +51,13 @@ export const shadow = {
     shadowRadius: 12,
     shadowOffset: { width: 0, height: 4 },
     elevation: 3,
+  },
+  /** Stronger, softer lift for cards that should stand out from the page. */
+  raised: {
+    shadowColor: '#1E2A5A',
+    shadowOpacity: 0.1,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 6,
   },
 };

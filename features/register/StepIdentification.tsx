@@ -35,6 +35,7 @@ export function StepIdentification({ values, onChange, onSubmit, submitting, sub
     <View style={{ gap: 20 }}>
       <LabeledField label="Numéro étudiant" error={touched.studentId ? errors.studentId : null}>
         <Field
+          accent={colors.orange}
           icon="school-outline"
           placeholder="P232055"
           value={values.studentId}
@@ -50,6 +51,7 @@ export function StepIdentification({ values, onChange, onSubmit, submitting, sub
 
       <LabeledField label="Numéro de téléphone" error={touched.phone ? errors.phone : null}>
         <Field
+          accent={colors.orange}
           icon="phone-portrait-outline"
           prefix={PHONE_PREFIX}
           placeholder="77 790 28 80"
@@ -79,7 +81,7 @@ export function StepIdentification({ values, onChange, onSubmit, submitting, sub
         </View>
       )}
 
-      <PrimaryButton label="Continuer" onPress={onSubmit} disabled={!valid} loading={submitting} />
+      <PrimaryButton accent label="Continuer" onPress={onSubmit} disabled={!valid} loading={submitting} />
 
       <View style={styles.login}>
         <Text style={styles.muted}>Déjà un compte ?</Text>
@@ -101,8 +103,8 @@ const styles = StyleSheet.create({
     backgroundColor: colors.dangerBg,
   },
   bannerText: { flex: 1, fontSize: 13, fontWeight: '600', color: colors.danger },
-  bannerLink: { fontSize: 13, fontWeight: '800', color: colors.primary, textDecorationLine: 'underline' },
+  bannerLink: { fontSize: 13, fontWeight: '800', color: colors.orangeText, textDecorationLine: 'underline' },
   login: { flexDirection: 'row', justifyContent: 'center', gap: 4 },
   muted: { fontSize: 14, color: colors.muted2 },
-  link: { fontSize: 14, fontWeight: '700', color: colors.primary },
+  link: { fontSize: 14, fontWeight: '700', color: colors.orangeText },
 });

@@ -8,10 +8,6 @@ import { services } from '@/constants/data';
 import { colors } from '@/constants/theme';
 
 const copy: Record<string, { title: string; body: string }> = {
-  livraison: {
-    title: 'Livraison',
-    body: 'Commande un plat chez un resto privé et fais-toi livrer sur le campus.',
-  },
   objets: {
     title: 'Objets perdus',
     body: 'Déclare un objet perdu ou retrouve ce qui a été déposé au bureau social.',
@@ -46,7 +42,7 @@ export default function ServiceScreen() {
         <Text style={styles.h1}>{meta.title}</Text>
       </View>
       <View style={{ padding: 20, alignItems: 'center', gap: 16 }}>
-        <View style={[styles.icon, { backgroundColor: svc?.bg ?? '#E8F0FF' }]}>
+        <View style={[styles.icon, { backgroundColor: svc?.bg ?? colors.primarySoft }]}>
           <Ionicons name={svc?.icon ?? 'grid-outline'} size={28} color={svc?.tint ?? colors.primary} />
         </View>
         <Text style={styles.body}>{meta.body}</Text>

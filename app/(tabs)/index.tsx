@@ -6,7 +6,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AdCarousel, AlertStrip, CaravanCard, RestoCard } from '@/components/home';
 import { headlines, services } from '@/constants/data';
-import { colors, radii, shadow } from '@/constants/theme';
+import { colors, shadow } from '@/constants/theme';
 import { useAuth } from '@/context/AuthContext';
 import { setupNotifications } from '@/lib/notifications';
 
@@ -121,18 +121,19 @@ const styles = StyleSheet.create({
   muted: { color: colors.muted2, fontSize: 13, marginTop: 2 },
   section: { fontSize: 20, fontWeight: '800', color: colors.navy, marginTop: 8 },
   grid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' },
-  service: { width: '23%', alignItems: 'center', gap: 8, marginBottom: 14 },
+  // 3 per row: 6 services fill two full rows.
+  service: { width: '31%', alignItems: 'center', gap: 8, marginBottom: 14 },
   serviceIcon: {
     width: 64,
     height: 64,
     borderRadius: 18,
-    backgroundColor: '#E8F0FF',
+    backgroundColor: colors.primarySoft,
     alignItems: 'center',
     justifyContent: 'center',
   },
   serviceLabel: { fontSize: 12, color: colors.navy, fontWeight: '600', textAlign: 'center' },
   news: {
-    backgroundColor: '#fff',
+    backgroundColor: colors.card,
     borderRadius: 18,
     padding: 14,
     flexDirection: 'row',

@@ -104,7 +104,7 @@ export function StepOtp({ phone, linkedEmail, verified, onEditPhone, onVerified,
             <Text style={styles.muted}>{fullPhone}</Text>
           </View>
         </View>
-        <PrimaryButton label="Continuer" onPress={onContinue} />
+        <PrimaryButton accent label="Continuer" onPress={onContinue} />
       </View>
     );
   }
@@ -131,7 +131,7 @@ export function StepOtp({ phone, linkedEmail, verified, onEditPhone, onVerified,
         {__DEV__ && <Text style={styles.dev}>Code de test : {DEV_OTP}</Text>}
       </View>
 
-      <PrimaryButton label="Continuer" onPress={() => verify(code)} disabled={!complete || locked} loading={verifying} />
+      <PrimaryButton accent label="Continuer" onPress={() => verify(code)} disabled={!complete || locked} loading={verifying} />
 
       <View style={{ alignItems: 'center', gap: 14 }}>
         {seconds > 0 ? (
@@ -162,7 +162,7 @@ export function StepOtp({ phone, linkedEmail, verified, onEditPhone, onVerified,
             </Pressable>
             {linkedEmail && (
               <Pressable style={styles.alt} onPress={() => resend('email')} disabled={!!sending}>
-                <View style={[styles.altIcon, { backgroundColor: '#E8F0FF' }]}>
+                <View style={[styles.altIcon, { backgroundColor: colors.primarySoft }]}>
                   <Ionicons name="mail-outline" size={18} color={colors.primary} />
                 </View>
                 <View style={{ flex: 1 }}>
@@ -182,7 +182,7 @@ export function StepOtp({ phone, linkedEmail, verified, onEditPhone, onVerified,
 const styles = StyleSheet.create({
   intro: { fontSize: 15, lineHeight: 22, color: colors.muted2 },
   strong: { fontWeight: '700', color: colors.text },
-  link: { fontSize: 14, fontWeight: '700', color: colors.primary },
+  link: { fontSize: 14, fontWeight: '700', color: colors.orangeText },
   muted: { fontSize: 14, color: colors.muted2, textAlign: 'center' },
   error: { fontSize: 13, fontWeight: '600', color: colors.danger, textAlign: 'center' },
   notice: { fontSize: 13, color: colors.success, textAlign: 'center' },
@@ -196,7 +196,7 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     borderWidth: 1,
     borderColor: colors.border,
-    backgroundColor: '#fff',
+    backgroundColor: colors.card,
   },
   altIcon: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
   altText: { flex: 1, fontSize: 14, fontWeight: '600', color: colors.text },

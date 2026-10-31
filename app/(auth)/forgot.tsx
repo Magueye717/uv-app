@@ -40,7 +40,7 @@ export default function ForgotScreen() {
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: '#F7F8FD' },
+  safe: { flex: 1, backgroundColor: colors.bg },
   body: { padding: 24, gap: 16 },
   h1: { fontSize: 28, fontWeight: '800', color: colors.navy },
   sub: { color: colors.muted2, lineHeight: 22, marginTop: -4 },

@@ -99,9 +99,9 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     borderWidth: 1.5,
     borderColor: colors.border,
-    backgroundColor: '#fff',
+    backgroundColor: colors.card,
   },
-  boxFilled: { borderColor: colors.primary },
+  boxFilled: { borderColor: colors.orange },
   boxInvalid: { borderColor: colors.danger },
   input: { flex: 1, textAlign: 'center', fontSize: 26, fontWeight: '800', color: colors.text },
 });

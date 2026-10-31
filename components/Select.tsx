@@ -89,7 +89,7 @@ const styles = StyleSheet.create({
   value: { flex: 1, fontSize: 15, color: colors.text },
   backdrop: { flex: 1, backgroundColor: 'rgba(15,27,76,0.4)' },
   sheet: {
-    backgroundColor: '#fff',
+    backgroundColor: colors.card,
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     paddingHorizontal: 20,

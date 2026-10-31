@@ -48,3 +48,9 @@ export const VILLAGES: Record<CampusKey, string[]> = {
   campus1: ['Village A', 'Village B', 'Village C', 'Village D', 'Village E', 'Village F'],
   campus2: ['Village G', 'Village H', 'Village I', 'Village J', 'Village K', 'Village L'],
 };
+
+/** Room number as written on the door: "214", "C12", "12B". */
+export const normalizeRoom = (value: string) => value.toUpperCase().replace(/\s/g, '').slice(0, 6);
+
+export const validateRoom = (v: string) =>
+  /^[A-Z]?\d{1,4}[A-Z]?$/.test(v) ? null : v ? 'Format invalide. Exemple : 214 ou C12' : 'Indique ton numéro de chambre';

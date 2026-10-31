@@ -58,7 +58,7 @@ const styles = StyleSheet.create({
     paddingTop: 8,
     paddingBottom: 18,
     borderTopWidth: 0,
-    backgroundColor: '#fff',
+    backgroundColor: colors.card,
     elevation: 12,
     shadowColor: '#1E2A5A',
     shadowOpacity: 0.08,
@@ -73,5 +73,5 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  iconOn: { backgroundColor: '#E8F0FF' },
+  iconOn: { backgroundColor: colors.primarySoft },
 });

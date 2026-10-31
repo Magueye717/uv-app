@@ -53,7 +53,7 @@ const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
   body: { padding: 20, gap: 10, paddingBottom: 40 },
   h1: { fontSize: 28, fontWeight: '800', color: colors.navy, marginBottom: 8 },
-  hero: { backgroundColor: '#fff', borderRadius: 22, padding: 24, alignItems: 'center', marginBottom: 8 },
+  hero: { backgroundColor: colors.card, borderRadius: 22, padding: 24, alignItems: 'center', marginBottom: 8 },
   avatar: {
     width: 72,
     height: 72,
@@ -67,7 +67,7 @@ const styles = StyleSheet.create({
   name: { fontSize: 22, fontWeight: '800', color: colors.navy },
   meta: { color: colors.muted2, marginTop: 4 },
   row: {
-    backgroundColor: '#fff',
+    backgroundColor: colors.card,
     borderRadius: 16,
     padding: 14,
     flexDirection: 'row',
@@ -78,7 +78,7 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 12,
-    backgroundColor: '#E8F0FF',
+    backgroundColor: colors.primarySoft,
     alignItems: 'center',
     justifyContent: 'center',
   },

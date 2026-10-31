@@ -1,0 +1,340 @@
+import { Ionicons } from '@expo/vector-icons';
+import { router, useLocalSearchParams } from 'expo-router';
+import { useRef, useState } from 'react';
+import {
+  Alert,
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+  type ScrollViewInstance,
+} from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+
+import { BackButton, Field, PrimaryButton } from '@/components/ui';
+import { TAXI_CHAT_HOURS, TAXI_LOCK_MIN, taxiQuickReplies, type TaxiMessage } from '@/constants/data';
+import { colors, radii } from '@/constants/theme';
+import { useTaxi } from '@/context/TaxiContext';
+import { useNow } from '@/lib/useNow';
+
+const time = (at: number) => {
+  const d = new Date(at);
+  return `${d.getHours()}h${String(d.getMinutes()).padStart(2, '0')}`;
+};
+
+// Sunu Taxi trip chat: only the organizer and paying passengers, closed 2 h after departure.
+export default function TripChat() {
+  const { id } = useLocalSearchParams<{ id: string }>();
+  const taxi = useTaxi();
+  const { me, nameOf } = taxi;
+  const now = useNow();
+  const scroll = useRef<ScrollViewInstance>(null);
+  const [text, setText] = useState('');
+  const [pinning, setPinning] = useState(false);
+
+  const back = () => (router.canGoBack() ? router.back() : router.replace('/services/taxi'));
+  const trip = taxi.trips.find((t) => t.id === id);
+
+  if (!trip || !trip.passengers.includes(me)) {
+    return (
+      <SafeAreaView style={styles.safe}>
+        <View style={styles.head}>
+          <BackButton onPress={back} />
+        </View>
+        <View style={styles.locked}>
+          <Ionicons name="lock-closed-outline" size={32} color={colors.muted} />
+          <Text style={styles.lockedTitle}>Discussion réservée</Text>
+          <Text style={styles.lockedText}>Seuls l’organisateur et les passagers qui ont payé leur place peuvent la lire.</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  const isOrganizer = trip.passengers[0] === me;
+  const closed = now >= trip.departureAt + TAXI_CHAT_HOURS * 3_600_000;
+  const lockAt = trip.departureAt - TAXI_LOCK_MIN * 60_000;
+
+  // The lock is a moment in time, not an event: shown as a system line once it has passed.
+  const thread: TaxiMessage[] = [
+    ...taxi.messages.filter((m) => m.tripId === trip.id),
+    ...(now >= lockAt ? [{ id: 'lock', tripId: trip.id, text: 'Places verrouillées 🔒', at: lockAt }] : []),
+  ].sort((a, b) => a.at - b.at);
+
+  const send = (value: string) => {
+    if (!value.trim() || closed) return;
+    taxi.send(trip.id, value);
+    setText('');
+  };
+
+  const moderate = (m: TaxiMessage) => {
+    if (!m.author || m.author === me) return;
+    const name = nameOf(m.author);
+    Alert.alert(name, m.text, [
+      {
+        text: 'Signaler le message',
+        onPress: () =>
+          Alert.alert('Message signalé', 'L’équipe Sunu Taxi va lire la conversation. Merci de nous aider à garder les trajets sûrs.'),
+      },
+      {
+        text: `Bloquer ${name}`,
+        style: 'destructive',
+        onPress: () =>
+          Alert.alert(`Bloquer ${name} ?`, 'Tu ne verras plus ses messages et vous ne serez plus proposés sur les mêmes trajets.', [
+            { text: 'Annuler', style: 'cancel' },
+            { text: 'Bloquer', style: 'destructive', onPress: () => taxi.block(m.author!) },
+          ]),
+      },
+      { text: 'Fermer', style: 'cancel' },
+    ]);
+  };
+
+  return (
+    <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
+      <View style={styles.head}>
+        <BackButton onPress={back} />
+        <View style={{ flex: 1 }}>
+          <Text style={styles.title} numberOfLines={1}>
+            {trip.from.split(' · ').pop()} → {trip.to.split(' · ').pop()}
+          </Text>
+          <Text style={styles.subtitle} numberOfLines={1}>
+            Départ {time(trip.departureAt)} · {trip.passengers.map(nameOf).join(', ')}
+          </Text>
+        </View>
+      </View>
+
+      {/* Pinned taxi: what to look for at the meeting point. */}
+      {trip.taxi ? (
+        <Pressable
+          style={styles.pin}
+          disabled={!isOrganizer || closed}
+          onPress={() => setPinning(true)}
+          accessibilityRole={isOrganizer ? 'button' : undefined}
+          accessibilityLabel={`Taxi : ${trip.taxi}`}>
+          <Ionicons name="car" size={18} color={colors.primary} />
+          <View style={{ flex: 1 }}>
+            <Text style={styles.pinLabel}>Taxi</Text>
+            <Text style={styles.pinText}>{trip.taxi}</Text>
+          </View>
+          {isOrganizer && !closed && <Ionicons name="create-outline" size={16} color={colors.muted2} />}
+        </Pressable>
+      ) : (
+        isOrganizer &&
+        !closed && (
+          <Pressable style={[styles.pin, styles.pinEmpty]} onPress={() => setPinning(true)} accessibilityRole="button">
+            <Ionicons name="add-circle-outline" size={18} color={colors.primary} />
+            <Text style={styles.pinCta}>Indiquer le taxi (modèle, couleur, plaque)</Text>
+          </Pressable>
+        )
+      )}
+
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        <ScrollView
+          ref={scroll}
+          contentContainerStyle={styles.thread}
+          onContentSizeChange={() => scroll.current?.scrollToEnd({ animated: true })}
+          keyboardShouldPersistTaps="handled">
+          <View style={styles.safety}>
+            <Ionicons name="shield-checkmark-outline" size={14} color={colors.muted2} />
+            <Text style={styles.safetyText}>
+              Ne partage pas ton numéro. Appuie longuement sur un message pour le signaler.
+            </Text>
+          </View>
+
+          {thread.map((m) => {
+            if (!m.author) {
+              return (
+                <View key={m.id} style={styles.system}>
+                  <Text style={styles.systemText}>{m.text}</Text>
+                </View>
+              );
+            }
+            const mine = m.author === me;
+            if (taxi.blocked.includes(m.author)) {
+              return (
+                <Text key={m.id} style={styles.hidden}>
+                  Message masqué
+                </Text>
+              );
+            }
+            return (
+              <Pressable
+                key={m.id}
+                onLongPress={() => moderate(m)}
+                style={[styles.row, mine && styles.rowMine]}
+                accessibilityHint={mine ? undefined : 'Appui long pour signaler ou bloquer'}>
+                {!mine && (
+                  <View style={styles.avatar}>
+                    <Text style={styles.avatarText}>{m.author}</Text>
+                  </View>
+                )}
+                <View style={[styles.bubble, mine ? styles.bubbleMine : styles.bubbleOther]}>
+                  {!mine && (
+                    <Text style={styles.author}>
+                      {nameOf(m.author)}
+                      {m.author === trip.passengers[0] ? ' · organisateur' : ''}
+                    </Text>
+                  )}
+                  <Text style={[styles.text, mine && { color: '#fff' }]}>{m.text}</Text>
+                  <Text style={[styles.time, mine && { color: 'rgba(255,255,255,0.75)' }]}>{time(m.at)}</Text>
+                </View>
+              </Pressable>
+            );
+          })}
+        </ScrollView>
+
+        {closed ? (
+          <View style={styles.closed}>
+            <Ionicons name="lock-closed-outline" size={14} color={colors.muted2} />
+            <Text style={styles.closedText}>Discussion fermée {TAXI_CHAT_HOURS} h après le départ</Text>
+          </View>
+        ) : (
+          <View style={styles.composer}>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.quick} keyboardShouldPersistTaps="handled">
+              {taxiQuickReplies.map((q) => (
+                <Pressable key={q} style={styles.quickChip} onPress={() => send(q)} accessibilityRole="button">
+                  <Text style={styles.quickText}>{q}</Text>
+                </Pressable>
+              ))}
+            </ScrollView>
+            <View style={styles.inputRow}>
+              <TextInput
+                style={styles.input}
+                placeholder="Message"
+                placeholderTextColor={colors.muted}
+                value={text}
+                onChangeText={setText}
+                multiline
+                maxLength={300}
+                accessibilityLabel="Écrire un message"
+              />
+              <Pressable
+                style={[styles.send, !text.trim() && { opacity: 0.4 }]}
+                disabled={!text.trim()}
+                onPress={() => send(text)}
+                accessibilityRole="button"
+                accessibilityLabel="Envoyer">
+                <Ionicons name="send" size={18} color="#fff" />
+              </Pressable>
+            </View>
+          </View>
+        )}
+      </KeyboardAvoidingView>
+
+      <PinSheet
+        visible={pinning}
+        initial={trip.taxi ?? ''}
+        onClose={() => setPinning(false)}
+        onSave={(value) => {
+          taxi.pinTaxi(trip.id, value);
+          setPinning(false);
+        }}
+      />
+    </SafeAreaView>
+  );
+}
+
+function PinSheet({
+  visible,
+  initial,
+  onClose,
+  onSave,
+}: {
+  visible: boolean;
+  initial: string;
+  onClose: () => void;
+  onSave: (value: string) => void;
+}) {
+  const [value, setValue] = useState(initial);
+  const valid = value.trim().length >= 4;
+  return (
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose} onShow={() => setValue(initial)}>
+      <Pressable style={styles.backdrop} onPress={onClose} accessibilityLabel="Fermer" />
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        <View style={styles.sheet}>
+          <Text style={styles.sheetTitle}>Quel taxi ?</Text>
+          <Text style={styles.sheetText}>Modèle, couleur et plaque : les passagers le retrouvent plus vite, et c’est plus sûr.</Text>
+          <Field
+            icon="car-outline"
+            placeholder="Peugeot 406 jaune · DK-1234-A"
+            value={value}
+            onChangeText={setValue}
+            autoCapitalize="sentences"
+            autoFocus
+          />
+          <PrimaryButton label="Épingler" disabled={!valid} onPress={() => onSave(value.trim())} />
+        </View>
+      </KeyboardAvoidingView>
+    </Modal>
+  );
+}
+
+const styles = StyleSheet.create({
+  safe: { flex: 1, backgroundColor: colors.bg },
+  head: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 20, paddingTop: 8, paddingBottom: 10 },
+  title: { fontSize: 17, fontWeight: '800', color: colors.navy },
+  subtitle: { fontSize: 12, color: colors.muted2, marginTop: 1 },
+  locked: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 8, padding: 32 },
+  lockedTitle: { fontSize: 17, fontWeight: '800', color: colors.navy },
+  lockedText: { fontSize: 13, color: colors.muted2, textAlign: 'center' },
+  pin: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginHorizontal: 20,
+    marginBottom: 6,
+    padding: 12,
+    borderRadius: radii.md,
+    backgroundColor: colors.card,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  pinEmpty: { borderStyle: 'dashed', borderColor: colors.primary, backgroundColor: colors.primarySofter },
+  pinLabel: { fontSize: 11, fontWeight: '700', color: colors.muted2, textTransform: 'uppercase' },
+  pinText: { fontSize: 14, fontWeight: '700', color: colors.navy },
+  pinCta: { flex: 1, fontSize: 13, fontWeight: '700', color: colors.primary },
+  thread: { padding: 16, gap: 8 },
+  safety: { flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'center', paddingHorizontal: 12, paddingVertical: 6, borderRadius: radii.pill, backgroundColor: colors.card, marginBottom: 6 },
+  safetyText: { fontSize: 11, color: colors.muted2, flexShrink: 1 },
+  system: { alignSelf: 'center', paddingHorizontal: 10, paddingVertical: 4, borderRadius: radii.pill, backgroundColor: '#E2E7F2' },
+  systemText: { fontSize: 12, fontWeight: '600', color: colors.muted2 },
+  hidden: { alignSelf: 'flex-start', fontSize: 12, fontStyle: 'italic', color: colors.muted, paddingLeft: 36 },
+  row: { flexDirection: 'row', alignItems: 'flex-end', gap: 6, maxWidth: '85%' },
+  rowMine: { alignSelf: 'flex-end' },
+  avatar: { width: 28, height: 28, borderRadius: 14, backgroundColor: colors.purple, alignItems: 'center', justifyContent: 'center' },
+  avatarText: { color: '#fff', fontSize: 10, fontWeight: '800' },
+  bubble: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: 16, flexShrink: 1 },
+  bubbleMine: { backgroundColor: colors.primary, borderBottomRightRadius: 4 },
+  bubbleOther: { backgroundColor: colors.card, borderBottomLeftRadius: 4 },
+  author: { fontSize: 11, fontWeight: '800', color: colors.purpleText, marginBottom: 2 },
+  text: { fontSize: 14, color: colors.text, lineHeight: 19 },
+  time: { fontSize: 10, color: colors.muted, alignSelf: 'flex-end', marginTop: 2 },
+  closed: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, padding: 16 },
+  closedText: { fontSize: 13, color: colors.muted2 },
+  composer: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border, backgroundColor: colors.card, paddingTop: 8, paddingBottom: 8, gap: 8 },
+  quick: { gap: 8, paddingHorizontal: 12 },
+  quickChip: { paddingHorizontal: 12, height: 32, borderRadius: radii.pill, backgroundColor: colors.primarySoft, justifyContent: 'center' },
+  quickText: { fontSize: 13, fontWeight: '600', color: colors.primary },
+  inputRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 8, paddingHorizontal: 12 },
+  input: {
+    flex: 1,
+    minHeight: 42,
+    maxHeight: 110,
+    paddingHorizontal: 14,
+    paddingTop: 11,
+    paddingBottom: 11,
+    borderRadius: 21,
+    backgroundColor: colors.input,
+    fontSize: 15,
+    color: colors.text,
+  },
+  send: { width: 42, height: 42, borderRadius: 21, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center' },
+  backdrop: { flex: 1, backgroundColor: 'rgba(15,27,76,0.35)' },
+  sheet: { backgroundColor: colors.card, borderTopLeftRadius: radii.xl, borderTopRightRadius: radii.xl, padding: 20, paddingBottom: 36, gap: 14 },
+  sheetTitle: { fontSize: 18, fontWeight: '800', color: colors.navy },
+  sheetText: { fontSize: 13, color: colors.muted2, lineHeight: 18 },
+});
