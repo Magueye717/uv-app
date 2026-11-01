@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useCallback, useState } from 'react';
-import { ActivityIndicator, Alert, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, Share, StyleSheet, Text, View } from 'react-native';
 import QRCode from 'react-native-qrcode-svg';
 import Animated from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -76,10 +76,43 @@ export default function Billet() {
   const pending = ticket.transfer?.status === 'pending' ? ticket.transfer : null;
   const canTransfer = active && !pending && !ticket.admittedAt && !!ticket.transferDeadline && Date.parse(ticket.transferDeadline) > now;
   const method = methodLabel[ticket.paidWith] ?? 'ton compte';
+  const companion = ticket.passenger;
+  const firstName = companion?.name.split(' ')[0] ?? '';
+  // The other tickets I hold for this departure (my seat and my companion's): one tap from one to the other.
+  const group = tickets
+    .filter((t) => t.details.departureId === d.departureId && t.status === 'active')
+    .sort((a, b) => (a.seat ?? 0) - (b.seat ?? 0));
+
+  const send = () =>
+    Share.share({
+      message:
+        `${firstName}, ton billet UGB Campus : ${d.from} → ${d.to}, ${dayLabel(Date.parse(ticket.event.startsAt))}, place ${ticket.seat}.\n` +
+        `Montée à ${d.pickup.place} à ${minus15(pickupTime)} (15 min avant le bus).\n` +
+        `Code à donner au chauffeur : ${ticket.code}`,
+    }).catch(() => undefined);
 
   const askCancel = () => {
     if (!quote) return;
     if (!quote.allowed) return Alert.alert('Annulation impossible', quote.reason);
+    // My own seat, with companions' tickets on the same departure: they stay valid unless cancelled too.
+    const others = companion ? [] : group.filter((t) => t.id !== ticket.id && t.passenger && t.cancellationQuote?.allowed);
+    if (others.length) {
+      const refund = (t: TicketDto) => (t.cancellationQuote?.allowed ? t.cancellationQuote.refund : 0);
+      const names = others.map((t) => t.passenger!.name.split(' ')[0]).join(' et ');
+      const both = async () => {
+        for (const t of [ticket, ...others]) await cancel(t.id);
+      };
+      return Alert.alert(
+        'Annuler ton billet ?',
+        `${formatFcfa(quote.refund)} remboursés sur ton numéro ${method}${quote.fee ? ` (${formatFcfa(quote.fee)} de frais)` : ''}.\n\n` +
+          `Le billet de ${names} reste valable si tu le gardes. Tu peux aussi l’annuler : ${formatFcfa(quote.refund + others.reduce((n, t) => n + refund(t), 0))} remboursés en tout.`,
+        [
+          { text: 'Garder', style: 'cancel' },
+          { text: 'Seulement le mien', onPress: () => cancel(ticket.id).then(load, fail('Annulation impossible')) },
+          { text: `Annuler les ${others.length + 1}`, style: 'destructive', onPress: () => both().then(load, fail('Annulation impossible')) },
+        ],
+      );
+    }
     Alert.alert(
       'Annuler ce billet ?',
       quote.fee === 0
@@ -105,7 +138,7 @@ export default function Billet() {
       : ticket.status === 'transferred'
         ? { tone: 'neutral' as const, icon: 'swap-horizontal' as const, text: `Billet transféré à ${ticket.transfer?.to.name ?? 'un ami'} (${ticket.transfer?.to.phoneMasked ?? ''})` }
         : ticket.admittedAt
-          ? { tone: 'success' as const, icon: 'checkmark-circle' as const, text: 'Tu es à bord · bon voyage !' }
+          ? { tone: 'success' as const, icon: 'checkmark-circle' as const, text: companion ? `${companion.name} est à bord · bon voyage !` : 'Tu es à bord · bon voyage !' }
           : d.confirmed
             ? { tone: 'success' as const, icon: 'checkmark-circle' as const, text: `Départ confirmé · sois à ${d.pickup.place} à ${minus15(pickupTime)}` }
             : {
@@ -120,6 +153,26 @@ export default function Billet() {
       <ScrollView contentContainerStyle={styles.body} showsVerticalScrollIndicator={false}>
         <StatusBanner {...banner} />
 
+        {group.length > 1 && (
+          <View style={styles.group}>
+            {group.map((t) => {
+              const on = t.id === ticket.id;
+              return (
+                <Pressable
+                  key={t.id}
+                  onPress={() => !on && router.replace(`/billet/${t.id}`)}
+                  style={[styles.groupChip, on && styles.groupChipOn]}
+                  accessibilityRole="tab"
+                  accessibilityState={{ selected: on }}>
+                  <Text style={[styles.groupText, on && styles.groupTextOn]} numberOfLines={1}>
+                    Place {t.seat} · {t.passenger ? t.passenger.name.split(' ')[0] : 'Toi'}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        )}
+
         <Animated.View entering={fresh ? riseIn.delay(motion.fast) : undefined} style={[styles.ticket, shadow.raised, !active && { opacity: 0.6 }]}>
           <View style={styles.top}>
             <OrganizerLine organizer={toOrganizer(ticket.event.organizer)} />
@@ -128,10 +181,21 @@ export default function Billet() {
               <Ionicons name="arrow-forward" size={18} color={colors.primary} />
               <Text style={styles.city}>{d.to}</Text>
             </View>
-            {user && active && (
-              <Text style={styles.passenger}>
-                {user.firstName} {user.lastName}
-              </Text>
+            {active && companion ? (
+              <View>
+                <Text style={styles.passenger}>{companion.name}</Text>
+                <Text style={styles.plate}>Accompagnant · réservé par toi · {companion.phone}</Text>
+              </View>
+            ) : (
+              user &&
+              active && (
+                <View>
+                  <Text style={styles.passenger}>
+                    {user.firstName} {user.lastName}
+                  </Text>
+                  {!ticket.purchaser.isMe && <Text style={styles.plate}>Réservé par {ticket.purchaser.name}</Text>}
+                </View>
+              )
             )}
             <View style={styles.grid}>
               <Cell label="Date" value={dayLabel(Date.parse(ticket.event.startsAt))} />
@@ -163,7 +227,9 @@ export default function Billet() {
                   <QRCode value={ticket.qr} size={190} color={colors.navy} backgroundColor={colors.card} ecl="M" />
                 </Animated.View>
                 <Text style={styles.code}>{ticket.code}</Text>
-                <Text style={styles.muted}>Montre ce code au chauffeur à l’embarquement</Text>
+                <Text style={styles.muted}>
+                  {companion ? `Embarquez ensemble, ou envoie le code à ${firstName} : le chauffeur vérifie son nom sur sa pièce d’identité` : 'Montre ce code au chauffeur à l’embarquement'}
+                </Text>
               </>
             ) : (
               <View style={styles.void}>
@@ -189,14 +255,27 @@ export default function Billet() {
           </View>
         )}
 
+        {active && companion && !ticket.admittedAt && (
+          <Pressable style={[styles.action, shadow.card]} onPress={send} accessibilityRole="button">
+            <Ionicons name="paper-plane-outline" size={18} color={colors.primary} />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.actionTitle}>Envoyer à {firstName}</Text>
+              <Text style={styles.actionSub}>Par WhatsApp ou SMS : le trajet, l’heure et le code à donner au chauffeur</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={16} color={colors.muted} />
+          </Pressable>
+        )}
+
         {active && quote?.allowed && (
           <View style={{ gap: 10 }}>
             {canTransfer && (
               <Pressable style={[styles.action, shadow.card]} onPress={() => setTransferOpen(true)} accessibilityRole="button">
                 <Ionicons name="swap-horizontal" size={18} color={colors.primary} />
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.actionTitle}>Transférer à un ami</Text>
-                  <Text style={styles.actionSub}>Ton ami accepte dans son app, la place devient la sienne</Text>
+                  <Text style={styles.actionTitle}>{companion ? `Mettre le billet dans l’app de ${firstName}` : 'Transférer à un ami'}</Text>
+                  <Text style={styles.actionSub}>
+                    {companion ? `Si ${firstName} a un compte UGB Campus : son propre QR code, à son nom` : 'Ton ami accepte dans son app, la place devient la sienne'}
+                  </Text>
                 </View>
                 <Ionicons name="chevron-forward" size={16} color={colors.muted} />
               </Pressable>
@@ -218,6 +297,8 @@ export default function Billet() {
       </ScrollView>
 
       <TransferSheet
+        key={ticket.id}
+        initialPhone={companion?.phone ?? ''}
         visible={transferOpen}
         onClose={() => setTransferOpen(false)}
         onConfirm={async (phone) => {
@@ -285,8 +366,19 @@ function Cell({ label, value }: { label: string; value: string }) {
   );
 }
 
-function TransferSheet({ visible, onClose, onConfirm }: { visible: boolean; onClose: () => void; onConfirm: (phone: string) => Promise<void> }) {
-  const [digits, setDigits] = useState('');
+function TransferSheet({
+  visible,
+  initialPhone,
+  onClose,
+  onConfirm,
+}: {
+  visible: boolean;
+  /** A companion's number, ready to send their own ticket to them. */
+  initialPhone: string;
+  onClose: () => void;
+  onConfirm: (phone: string) => Promise<void>;
+}) {
+  const [digits, setDigits] = useState(() => initialPhone.replace(/^\+221/, '').replace(/\D/g, '').slice(0, 9));
   const [sending, setSending] = useState(false);
   // Senegalese mobile numbers: 9 digits, starting with 7.
   const valid = /^7\d{8}$/.test(digits);
@@ -360,4 +452,9 @@ const styles = StyleSheet.create({
   backdrop: { flex: 1, backgroundColor: 'rgba(15,27,76,0.35)' },
   sheet: { backgroundColor: colors.card, borderTopLeftRadius: radii.xl, borderTopRightRadius: radii.xl, padding: 20, paddingBottom: 36, gap: 14 },
   sheetTitle: { ...typo.h3, color: colors.navy },
+  group: { flexDirection: 'row', gap: 8 },
+  groupChip: { flex: 1, minHeight: 40, borderRadius: radii.pill, borderWidth: 1.5, borderColor: colors.border, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 10 },
+  groupChipOn: { borderColor: colors.primary, backgroundColor: colors.primarySoft },
+  groupText: { ...typo.smallStrong, color: colors.muted2 },
+  groupTextOn: { color: colors.primary },
 });

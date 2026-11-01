@@ -76,6 +76,8 @@ export type NewAccount = {
   onCampus: boolean;
   village: string | null;
   room: string | null;
+  ufr: string;
+  region: string;
   password: string;
 };
 
@@ -91,6 +93,8 @@ export async function createAccount(input: NewAccount): Promise<Tokens> {
       onCampus: input.onCampus,
       village: input.onCampus ? input.village : null,
       room: input.onCampus ? input.room : null,
+      ufr: input.ufr,
+      region: input.region,
       password: input.password,
       termsVersion: TERMS_VERSION,
       device: deviceInfo(),

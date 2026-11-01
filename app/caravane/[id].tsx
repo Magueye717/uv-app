@@ -10,7 +10,8 @@ import { caravanState, formatDateTime, formatFcfa, paymentMethods, type Caravan,
 import { PaymentLogo } from '@/components/PaymentLogo';
 import { colors, radii, shadow, typo } from '@/constants/theme';
 import { useCaravans, type BookingOutcome } from '@/context/CaravansContext';
-import { caravansApi, toCaravan, type SeatMap } from '@/features/caravans/api';
+import { caravansApi, toCaravan, type PassengerDto, type SeatMap } from '@/features/caravans/api';
+import { CompanionSheet } from '@/features/caravans/CompanionSheet';
 import type { PaymentMethod } from '@/features/payments/checkout';
 import { ApiError } from '@/lib/api';
 import { haptics } from '@/lib/haptics';
@@ -22,12 +23,19 @@ const METHOD: Record<string, PaymentMethod> = { wave: 'wave', om: 'orange_money'
 
 export default function CaravaneReservation() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { caravans, book, resume, release, refresh } = useCaravans();
+  const { caravans, tickets, book, resume, release, refresh } = useCaravans();
   // From the list, or straight from a link (notification): then fetched.
   const [fetched, setFetched] = useState<Caravan | null>(null);
   const c = caravans.find((x) => x.id === id) ?? fetched;
   const [map, setMap] = useState<SeatMap | null>(null);
-  const [seat, setSeat] = useState<number | null>(null);
+  // My seat and/or companions' seats, paid together.
+  const [picks, setPicks] = useState<SeatPick[]>([]);
+  // The seat whose companion is being named.
+  const [sheet, setSheet] = useState<number | null>(null);
+  // What the next tap on a free seat does: move my seat, add a companion, or move that companion's seat.
+  const [target, setTarget] = useState<Target | null>(null);
+  // I already have my seat and book one for a companion.
+  const [forCompanion, setForCompanion] = useState(false);
   const [showMap, setShowMap] = useState(false);
   const [pickedUp, setPickup] = useState<CaravanStop | null>(null);
   const [droppedOff, setDropoff] = useState<CaravanStop | null>(null);
@@ -54,7 +62,6 @@ export default function CaravaneReservation() {
     }
   }, [id, caravans, loadSeats]);
 
-
   const perRow = map?.seatsPerRow ?? 4;
   // First and last seat of each row are by the window.
   const isWindow = (n: number) => (n - 1) % perRow === 0 || (n - 1) % perRow === perRow - 1;
@@ -73,42 +80,94 @@ export default function CaravaneReservation() {
     );
   }
 
+  const existing = c.myTicketId;
+  const limit = c.mySeatsLeft;
+  const limitText = c.maxSeatsPerStudent === 1 ? 'Une seule place par étudiant sur ce départ.' : `${c.maxSeatsPerStudent} places maximum par étudiant sur ce départ.`;
+  const mine = picks.find((p) => !p.passenger);
+  // Companions' seats already paid on this departure (I may have cancelled my own seat and be booking again).
+  const paid = tickets.filter((t) => t.status === 'active' && t.passenger && t.details.departureId === c.id);
+  const paidSeat = (n: number) => paid.find((t) => t.seat === n);
+  const sheetPick = picks.find((p) => p.seat === sheet);
+  const freeSeats = () => Array.from({ length: map?.capacity ?? c.totalSeats }, (_, i) => i + 1).filter((n) => !taken.has(n) && !picks.some((p) => p.seat === n));
+
+  // The first seat placed is mine (unless I already have one), then taps move the seat being placed.
+  const valid = (t: Target | null): t is Target =>
+    t === 'mine' ? !existing : t === 'add' ? picks.length < limit : t !== null && picks.some((p) => p.seat === t && p.passenger);
+  const companions = picks.filter((p) => p.passenger);
+  const current: Target = valid(target)
+    ? target
+    : !existing
+      ? 'mine'
+      : companions.length
+        ? companions[companions.length - 1]!.seat
+        : 'add';
+
+  /** Puts the seat being placed on seat n: mine moves, a companion moves with their name, or a new companion is named. */
+  const place = (n: number, t: Target) => {
+    if (t === 'mine') {
+      setPicks((prev) => (prev.some((p) => !p.passenger) ? prev.map((p) => (p.passenger ? p : { ...p, seat: n })) : [...prev, { seat: n, passenger: null }]));
+      setTarget('mine');
+    } else if (t === 'add') {
+      if (picks.length >= limit) Alert.alert('Limite atteinte', limitText);
+      else setSheet(n);
+    } else {
+      setPicks((prev) => prev.map((p) => (p.seat === t ? { ...p, seat: n } : p)));
+      setTarget(n);
+    }
+  };
+
+  const tapSeat = (n: number) => {
+    const picked = picks.find((p) => p.seat === n);
+    // Tapping one of my chosen seats selects it: the next free seat tapped moves it.
+    if (picked) setTarget(picked.passenger ? n : 'mine');
+    else place(n, current);
+  };
+
   // Front-most free window seat, else the front-most free seat (the server suggests the same).
   const pickForMe = () => {
-    const free = Array.from({ length: map?.capacity ?? c.totalSeats }, (_, i) => i + 1).filter((n) => !taken.has(n));
-    setSeat(free.find(isWindow) ?? free[0] ?? null);
+    const free = freeSeats();
+    const best = free.find(isWindow) ?? free[0];
+    if (best) place(best, existing ? 'add' : 'mine');
+  };
+  const openMap = (t: Target) => {
+    setTarget(t);
+    setShowMap(true);
   };
   const { confirmed } = caravanState(c);
   const rows = Array.from({ length: Math.ceil((map?.capacity ?? 0) / perRow) }, (_, r) =>
     Array.from({ length: perRow }, (_, i) => r * perRow + i + 1).filter((n) => n <= (map?.capacity ?? 0)),
   );
-  const total = c.price + SERVICE_FEE;
-  const ready = !!seat && !!pickup && !!dropoff && !paying;
-  const existing = c.myTicketId;
+  const total = (c.price + SERVICE_FEE) * Math.max(1, picks.length);
+  const ready = picks.length > 0 && !!pickup && !!dropoff && !paying;
+  const ordered = [...picks].sort((a, b) => Number(!!a.passenger) - Number(!!b.passenger));
+  const held = c.myBooking;
+  const heldTotal = (c.price + SERVICE_FEE) * (held?.seats.length || 1);
+  const booking = !existing || forCompanion;
 
-  const finish = (outcome: BookingOutcome, stop: CaravanStop | null) => {
+  const finish = (outcome: BookingOutcome, stop: CaravanStop | null, amount: number) => {
     if (outcome.status === 'confirmed') {
       haptics.success();
       if (stop) scheduleCaravanReminder(c, stop);
       router.replace({ pathname: '/billet/[id]', params: { id: outcome.ticketId, nouveau: '1' } });
     } else if (outcome.status === 'refunded') {
-      Alert.alert('Place perdue', `Le paiement est arrivé après la fin de la réservation et la place a été reprise. ${formatFcfa(total)} te sont remboursés.`);
+      Alert.alert('Place perdue', `Le paiement est arrivé après la fin de la réservation et la place a été reprise. ${formatFcfa(amount)} te sont remboursés.`);
     } else if (outcome.status === 'pending') {
-      Alert.alert('Paiement en attente', 'Ta place est gardée 10 minutes. Termine le paiement depuis cet écran.');
+      Alert.alert('Paiement en attente', 'Tes places sont gardées 10 minutes. Termine le paiement depuis cet écran.');
     } else {
-      Alert.alert('Paiement non effectué', 'Ta place a été libérée. Tu peux réessayer.');
+      Alert.alert('Paiement non effectué', 'Les places ont été libérées. Tu peux réessayer.');
     }
     loadSeats();
   };
 
   const pay = async () => {
-    if (!seat || !pickup || !dropoff) return;
+    if (!picks.length || !pickup || !dropoff) return;
     setPaying(true);
     try {
-      finish(await book(c.id, { seat, pickupStopId: pickup.stopId, dropoffStopId: dropoff.stopId, method: METHOD[payment] ?? 'wave' }), pickup);
+      const seats = ordered.map((p) => (p.passenger ? { seat: p.seat, passenger: p.passenger } : { seat: p.seat }));
+      finish(await book(c.id, { seats, pickupStopId: pickup.stopId, dropoffStopId: dropoff.stopId, method: METHOD[payment] ?? 'wave' }), pickup, total);
     } catch (err) {
       if (err instanceof ApiError && err.code === 'SEAT_TAKEN') {
-        setSeat(null);
+        setPicks([]);
         loadSeats();
       }
       Alert.alert('Réservation impossible', err instanceof ApiError ? err.message : 'Réessaie dans un instant.');
@@ -121,7 +180,7 @@ export default function CaravaneReservation() {
   const resumePayment = async () => {
     setPaying(true);
     try {
-      finish(await resume(c), c.pickups[0] ?? null);
+      finish(await resume(c), c.pickups[0] ?? null, heldTotal);
     } catch (err) {
       Alert.alert('Paiement impossible', err instanceof ApiError ? err.message : 'Réessaie dans un instant.');
     } finally {
@@ -133,7 +192,7 @@ export default function CaravaneReservation() {
     <SafeAreaView style={styles.safe}>
       <View style={styles.head}>
         <BackButton onPress={() => router.back()} />
-        <Text style={styles.h1}>Réserver ma place</Text>
+        <Text style={styles.h1}>{existing && forCompanion ? 'Place pour un accompagnant' : 'Réserver ma place'}</Text>
         <View style={{ width: 44 }} />
       </View>
 
@@ -164,78 +223,137 @@ export default function CaravaneReservation() {
           <Guarantee icon="refresh-outline" text="Annulation gratuite jusqu’à 24 h avant le départ, puis 10 % de frais" />
         </View>
 
-        {existing || c.purchasedHere ? (
+        {held ? (
+          <View style={[styles.card, shadow.card, styles.already]}>
+            <Ionicons name="time-outline" size={28} color={colors.primary} />
+            <Text style={styles.alreadyTitle}>
+              {held.seats.length > 1 ? `Places n° ${held.seats.map((x) => x.seat).join(' et ')} gardées pour toi` : `Place n° ${held.seat} gardée pour toi`}
+            </Text>
+            {held.seats
+              .filter((x) => x.passenger)
+              .map((x) => (
+                <Text key={x.seat} style={styles.alreadyText}>
+                  Place {x.seat} : {x.passenger!.name}
+                </Text>
+              ))}
+            <Text style={styles.alreadyText}>Termine le paiement avant {formatDateTime(Date.parse(held.holdExpiresAt))}, sinon elles sont rendues aux autres.</Text>
+            <Pressable style={styles.alreadyBtn} onPress={resumePayment} disabled={paying}>
+              <Text style={styles.alreadyBtnText}>{paying ? 'Paiement…' : `Payer ${formatFcfa(heldTotal)}`}</Text>
+            </Pressable>
+            <Pressable onPress={() => release(held.id).then(loadSeats, () => undefined)} hitSlop={8} accessibilityRole="button">
+              <Text style={styles.change}>{held.seats.length > 1 ? 'Libérer les places' : 'Libérer la place'}</Text>
+            </Pressable>
+          </View>
+        ) : existing && !forCompanion ? (
           <View style={[styles.card, shadow.card, styles.already]}>
             <Ionicons name="ticket-outline" size={28} color={colors.primary} />
-            <Text style={styles.alreadyTitle}>{existing ? 'Tu as déjà un billet pour ce départ' : 'Tu as transféré ton billet'}</Text>
+            <Text style={styles.alreadyTitle}>Tu as déjà ta place pour ce départ</Text>
             <Text style={styles.alreadyText}>
-              Un seul billet par étudiant et par caravane, pour que chaque place aille à un vrai voyageur.
+              {limit > 0 && c.bookingOpen
+                ? `Tu voyages avec quelqu’un ? Tu peux encore réserver ${limit > 1 ? `${limit} places` : 'une place'} pour un accompagnant (${limitText.toLowerCase()})`
+                : limitText}
             </Text>
-            {existing && (
-              <Pressable style={styles.alreadyBtn} onPress={() => router.replace(`/billet/${existing}`)}>
-                <Text style={styles.alreadyBtnText}>Voir mon billet</Text>
+            <Pressable style={styles.alreadyBtn} onPress={() => router.replace(`/billet/${existing}`)}>
+              <Text style={styles.alreadyBtnText}>Voir mon billet</Text>
+            </Pressable>
+            {limit > 0 && c.bookingOpen && (
+              <Pressable onPress={() => setForCompanion(true)} hitSlop={8} accessibilityRole="button">
+                <Text style={styles.change}>Réserver pour un accompagnant</Text>
               </Pressable>
             )}
           </View>
-        ) : c.myBooking ? (
+        ) : limit === 0 ? (
           <View style={[styles.card, shadow.card, styles.already]}>
-            <Ionicons name="time-outline" size={28} color={colors.primary} />
-            <Text style={styles.alreadyTitle}>Place n° {c.myBooking.seat} gardée pour toi</Text>
-            <Text style={styles.alreadyText}>Termine le paiement avant {formatDateTime(Date.parse(c.myBooking.holdExpiresAt))}, sinon elle est rendue aux autres.</Text>
-            <Pressable style={styles.alreadyBtn} onPress={resumePayment} disabled={paying}>
-              <Text style={styles.alreadyBtnText}>{paying ? 'Paiement…' : `Payer ${formatFcfa(total)}`}</Text>
-            </Pressable>
-            <Pressable
-              onPress={() => release(c.myBooking!.id).then(loadSeats, () => undefined)}
-              hitSlop={8}
-              accessibilityRole="button">
-              <Text style={styles.change}>Libérer la place</Text>
-            </Pressable>
+            <Ionicons name="ticket-outline" size={28} color={colors.primary} />
+            <Text style={styles.alreadyTitle}>{c.purchasedHere ? 'Tu as transféré ton billet' : 'Limite atteinte'}</Text>
+            <Text style={styles.alreadyText}>{limitText} Les billets transférés comptent aussi, pour que chaque place aille à un vrai voyageur.</Text>
           </View>
         ) : !c.bookingOpen ? (
           <View style={[styles.card, shadow.card, styles.already]}>
             <Ionicons name="lock-closed-outline" size={28} color={colors.muted} />
             <Text style={styles.alreadyTitle}>{c.seats ? 'Réservations fermées' : 'Départ complet'}</Text>
           </View>
-        ) : (
+        ) : booking ? (
           <>
           <View style={styles.sectionRow}>
-            <Text style={styles.section}>Ta place</Text>
+            <Text style={styles.section}>{existing ? 'Sa place' : limit > 1 ? 'Tes places' : 'Ta place'}</Text>
             <Text style={styles.free}>{c.seats} places libres</Text>
           </View>
+
+          {paid.length > 0 && (
+            <View style={[styles.card, shadow.card, { gap: 10 }]}>
+              <Text style={styles.recapTitle}>Déjà payé{paid.length > 1 ? 'es' : 'e'} sur ce départ</Text>
+              {paid.map((t) => (
+                <Pressable key={t.id} style={styles.picked} onPress={() => router.push(`/billet/${t.id}`)} accessibilityRole="button">
+                  <View style={[styles.pickedSeat, styles.pickedCompanion]}>
+                    <Text style={styles.pickedSeatText}>{t.seat}</Text>
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.payName}>
+                      Place n° {t.seat} · {t.passenger!.name}
+                    </Text>
+                    <Text style={styles.muted}>Ton accompagnant · son billet reste valable</Text>
+                  </View>
+                  <Ionicons name="chevron-forward" size={16} color={colors.muted} />
+                </Pressable>
+              ))}
+            </View>
+          )}
 
           {/* The 64-seat plan is long: folded by default, one tap picks a good seat. */}
           {!showMap ? (
             <View style={[styles.card, shadow.card, { gap: 12 }]}>
-              {seat ? (
-                <View style={styles.picked}>
-                  <View style={styles.pickedSeat}>
-                    <Text style={styles.pickedSeatText}>{seat}</Text>
+              {ordered.map((p) => (
+                <Pressable
+                  key={p.seat}
+                  style={styles.picked}
+                  disabled={!p.passenger}
+                  onPress={() => setSheet(p.seat)}
+                  accessibilityRole={p.passenger ? 'button' : undefined}
+                  accessibilityLabel={p.passenger ? `Place ${p.seat}, ${p.passenger.name}. Modifier` : undefined}>
+                  <View style={[styles.pickedSeat, p.passenger && styles.pickedCompanion]}>
+                    <Text style={styles.pickedSeatText}>{p.seat}</Text>
                   </View>
                   <View style={{ flex: 1 }}>
-                    <Text style={styles.payName}>Place n° {seat}</Text>
+                    <Text style={styles.payName}>
+                      Place n° {p.seat} · {p.passenger ? p.passenger.name : 'Toi'}
+                    </Text>
                     <Text style={styles.muted}>
-                      {isWindow(seat) ? 'Fenêtre' : 'Couloir'} · rangée {Math.ceil(seat / perRow)}
+                      {p.passenger ? `Accompagnant · ${p.passenger.phone}` : `${isWindow(p.seat) ? 'Fenêtre' : 'Couloir'} · rangée ${Math.ceil(p.seat / perRow)}`}
                     </Text>
                   </View>
-                  <Pressable onPress={() => setShowMap(true)} hitSlop={10} accessibilityRole="button">
-                    <Text style={styles.change}>Changer</Text>
+                  {p.passenger && <Ionicons name="create-outline" size={18} color={colors.muted2} />}
+                </Pressable>
+              ))}
+              {picks.length > 0 ? (
+                <View style={styles.pickedActions}>
+                  <Pressable onPress={() => openMap(mine ? 'mine' : ordered[0]!.seat)} hitSlop={10} accessibilityRole="button">
+                    <Text style={styles.change}>{picks.length > 1 ? 'Changer les places' : 'Changer'}</Text>
                   </Pressable>
+                  {picks.length < limit && (
+                    <Pressable onPress={() => openMap('add')} hitSlop={10} accessibilityRole="button" style={styles.addCompanion}>
+                      <Ionicons name="person-add-outline" size={16} color={colors.primary} />
+                      <Text style={styles.addCompanionText}>Ajouter un accompagnant</Text>
+                    </Pressable>
+                  )}
                 </View>
               ) : (
-                <Text style={styles.muted}>Laisse-nous choisir, ou regarde le plan du bus.</Text>
-              )}
-              {!seat && (
-                <View style={styles.seatActions}>
-                  <Pressable style={[styles.seatAction, styles.seatActionMain]} onPress={pickForMe} accessibilityRole="button">
-                    <Ionicons name="sparkles-outline" size={16} color="#fff" />
-                    <Text style={[styles.seatActionText, { color: '#fff' }]}>Choisis pour moi</Text>
-                  </Pressable>
-                  <Pressable style={styles.seatAction} onPress={() => setShowMap(true)} accessibilityRole="button">
-                    <Ionicons name="grid-outline" size={16} color={colors.primary} />
-                    <Text style={styles.seatActionText}>Voir le plan</Text>
-                  </Pressable>
-                </View>
+                <>
+                  <Text style={styles.muted}>
+                    {existing ? 'Choisis la place de ton accompagnant : on te demandera son nom et son numéro.' : 'Laisse-nous choisir, ou regarde le plan du bus.'}
+                    {!existing && limit > 1 ? ` Tu voyages avec quelqu’un ? Après ta place, ajoute un accompagnant (${limitText.toLowerCase().replace('.', '')}).` : ''}
+                  </Text>
+                  <View style={styles.seatActions}>
+                    <Pressable style={[styles.seatAction, styles.seatActionMain]} onPress={pickForMe} accessibilityRole="button">
+                      <Ionicons name="sparkles-outline" size={16} color="#fff" />
+                      <Text style={[styles.seatActionText, { color: '#fff' }]}>Choisis pour moi</Text>
+                    </Pressable>
+                    <Pressable style={styles.seatAction} onPress={() => openMap(existing ? 'add' : 'mine')} accessibilityRole="button">
+                      <Ionicons name="grid-outline" size={16} color={colors.primary} />
+                      <Text style={styles.seatActionText}>Voir le plan</Text>
+                    </Pressable>
+                  </View>
+                </>
               )}
             </View>
           ) : (
@@ -243,8 +361,50 @@ export default function CaravaneReservation() {
               <View style={styles.legend}>
                 <Legend style={styles.seatFree} label="Libre" />
                 <Legend style={styles.seatTaken} label="Occupée" />
-                <Legend style={styles.seatSelected} label="Choisie" />
+                {!existing && <Legend style={styles.seatSelected} label="Toi" />}
+                {limit > 1 || existing || paid.length ? <Legend style={styles.seatCompanion} label="Accompagnant" /> : null}
               </View>
+              {/* Which seat the next tap places: mine, a companion's, or a new companion. */}
+              {(picks.length > 0 || paid.length > 0) && (
+                <View style={styles.targets}>
+                  {ordered.map((p) => {
+                    const t: Target = p.passenger ? p.seat : 'mine';
+                    const on = current === t;
+                    return (
+                      <Pressable
+                        key={p.seat}
+                        onPress={() => setTarget(t)}
+                        style={[styles.target, on && (p.passenger ? styles.targetOnCompanion : styles.targetOn)]}
+                        accessibilityRole="tab"
+                        accessibilityState={{ selected: on }}>
+                        <Text style={[styles.targetText, on && { color: '#fff' }]} numberOfLines={1}>
+                          {p.passenger ? p.passenger.name.split(' ')[0] : 'Toi'} · {p.seat}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                  {picks.length < limit && (existing || mine) && (
+                    <Pressable
+                      onPress={() => setTarget('add')}
+                      style={[styles.target, current === 'add' && styles.targetOnCompanion]}
+                      accessibilityRole="tab"
+                      accessibilityState={{ selected: current === 'add' }}>
+                      <Text style={[styles.targetText, current === 'add' && { color: '#fff' }]}>+ Accompagnant</Text>
+                    </Pressable>
+                  )}
+                </View>
+              )}
+              <Text style={styles.mapHint}>
+                {current === 'mine'
+                  ? mine
+                    ? 'Touche une autre place pour déplacer la tienne.'
+                    : limit > 1
+                      ? 'Touche ta place. Tu voyages avec quelqu’un ? Ensuite, choisis « + Accompagnant ».'
+                      : 'Touche ta place.'
+                  : current === 'add'
+                    ? 'Touche une place libre pour ton accompagnant : on te demandera son nom et son numéro.'
+                    : `Touche une autre place pour déplacer celle de ${picks.find((p) => p.seat === current)?.passenger?.name.split(' ')[0] ?? 'ton accompagnant'}.`}
+              </Text>
               <View style={[styles.card, styles.busCard, shadow.card]}>
                 <View style={styles.front}>
                   <Ionicons name="bus-outline" size={12} color={colors.primary} />
@@ -255,25 +415,37 @@ export default function CaravaneReservation() {
                   <View key={row[0]} style={styles.seatRow}>
                     {row.map((n, i) => {
                       const isTaken = taken.has(n);
-                      const isSelected = seat === n;
+                      const pick = picks.find((p) => p.seat === n);
+                      const own = paidSeat(n);
+                      const selected = !!pick && current === (pick.passenger ? pick.seat : 'mine');
                       return (
                         <Pressable
                           key={n}
                           disabled={isTaken}
-                          onPress={() => {
-                            setSeat(n);
-                            setShowMap(false);
-                          }}
-                          accessibilityLabel={isTaken ? `Place ${n}, occupée` : `Place ${n}`}
+                          onPress={() => tapSeat(n)}
+                          accessibilityLabel={
+                            own
+                              ? `Place ${n}, ${own.passenger!.name}, déjà payée`
+                              : isTaken
+                                ? `Place ${n}, occupée`
+                                : pick
+                                  ? `Place ${n}, ${pick.passenger ? pick.passenger.name : 'ta place'}`
+                                  : `Place ${n}`
+                          }
                           style={[
                             styles.seat,
                             i === Math.floor(perRow / 2) && styles.afterAisle,
-                            isTaken ? styles.seatTaken : isSelected ? styles.seatSelected : styles.seatFree,
+                            own ? [styles.seatCompanion, styles.seatPaid] : isTaken ? styles.seatTaken : pick ? (pick.passenger ? styles.seatCompanion : styles.seatSelected) : styles.seatFree,
+                            selected && styles.seatMoving,
                           ]}>
-                          {isTaken ? (
+                          {own ? (
+                            <Text style={styles.seatInitials}>{initials(own.passenger!.name)}</Text>
+                          ) : isTaken ? (
                             <Ionicons name="close" size={16} color={colors.muted} />
+                          ) : pick?.passenger ? (
+                            <Text style={styles.seatInitials}>{initials(pick.passenger.name)}</Text>
                           ) : (
-                            <Text style={[styles.seatText, isSelected && { color: '#fff' }]}>{n}</Text>
+                            <Text style={[styles.seatText, !!pick && { color: '#fff' }]}>{n}</Text>
                           )}
                         </Pressable>
                       );
@@ -281,19 +453,25 @@ export default function CaravaneReservation() {
                   </View>
                 ))}
               </View>
+              <Pressable style={[styles.seatAction, styles.seatActionMain, styles.mapDone]} onPress={() => setShowMap(false)} accessibilityRole="button">
+                <Ionicons name="checkmark" size={16} color="#fff" />
+                <Text style={[styles.seatActionText, { color: '#fff' }]}>
+                  {picks.length > 1 ? `Valider les ${picks.length} places` : picks.length ? 'Valider ma place' : 'Fermer le plan'}
+                </Text>
+              </Pressable>
             </>
           )}
 
           {/* Like the organizers' own timetables: every stop with the bus's time there. */}
           <StopPicker
-            title="Où montes-tu ?"
+            title={existing ? 'Où monte-t-il ?' : 'Où montes-tu ?'}
             hint="Sois au point de montée 15 min avant l’heure : le bus n’attend pas."
             stops={c.pickups}
             value={pickup}
             onChange={setPickup}
           />
           <StopPicker
-            title="Où descends-tu ?"
+            title={existing ? 'Où descend-il ?' : 'Où descends-tu ?'}
             hint="Heures d’arrivée estimées, selon la circulation."
             stops={c.dropoffs}
             value={dropoff}
@@ -322,10 +500,17 @@ export default function CaravaneReservation() {
 
           <View style={[styles.card, shadow.card, { gap: 8 }]}>
             <Text style={styles.recapTitle}>Récapitulatif</Text>
-            <RecapRow
-              k={seat ? `Place n° ${seat} · Rangée ${Math.ceil(seat / perRow)}` : 'Aucune place choisie'}
-              v={formatFcfa(c.price)}
-            />
+            {ordered.length ? (
+              ordered.map((p) => (
+                <RecapRow
+                  key={p.seat}
+                  k={`Place n° ${p.seat} · ${p.passenger ? shortName(p.passenger.name) : 'Toi'}`}
+                  v={formatFcfa(c.price)}
+                />
+              ))
+            ) : (
+              <RecapRow k="Aucune place choisie" v={formatFcfa(c.price)} />
+            )}
             <RecapRow k="Montée" v={pickup ? `${pickup.place} · ${pickup.time}` : 'À choisir'} />
             <RecapRow k="Descente" v={dropoff?.place ?? 'À choisir'} />
             <RecapRow k="Frais de service" v={formatFcfa(SERVICE_FEE)} />
@@ -341,22 +526,61 @@ export default function CaravaneReservation() {
             <Text style={styles.payText}>
               {paying
                 ? 'Paiement en cours…'
-                : !seat
+                : !picks.length
                 ? 'Choisis une place'
                 : !pickup
-                  ? 'Choisis ton point de montée'
+                  ? 'Choisis le point de montée'
                   : !dropoff
-                    ? 'Choisis ta descente'
+                    ? 'Choisis la descente'
                     : `Payer ${formatFcfa(total)}`}
             </Text>
           </Pressable>
-          <Text style={styles.note}>Billet avec QR code dans l’app après paiement</Text>
+          <Text style={styles.note}>
+            {picks.length > 1 ? 'Un billet avec QR code par place dans ton app après paiement' : 'Billet avec QR code dans l’app après paiement'}
+          </Text>
           </>
-        )}
+        ) : null}
       </ScrollView>
+
+      <CompanionSheet
+        key={sheet ?? 'closed'}
+        seat={sheet}
+        initial={sheetPick?.passenger ?? null}
+        route={pickup && dropoff ? `${pickup.place} → ${dropoff.place}` : null}
+        onClose={() => setSheet(null)}
+        onSave={(passenger) => {
+          setPicks((prev) => [...prev.filter((p) => p.seat !== sheet), { seat: sheet!, passenger }]);
+          // The new companion's seat is the one the next taps move.
+          setTarget(sheet);
+          setSheet(null);
+        }}
+        onRemove={() => {
+          setPicks((prev) => prev.filter((p) => p.seat !== sheet));
+          setSheet(null);
+        }}
+      />
     </SafeAreaView>
   );
 }
+
+type SeatPick = { seat: number; passenger: PassengerDto | null };
+/** What the next tap on a free seat places: my seat, a new companion, or the companion on that seat. */
+type Target = 'mine' | 'add' | number;
+
+/** "Awa Ndiaye" → "AN", on the seat map. */
+const initials = (name: string) =>
+  name
+    .split(' ')
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((w) => w[0]!.toUpperCase())
+    .join('');
+
+/** "Awa Ndiaye" → "Awa N." */
+const shortName = (name: string) => {
+  const [first, ...rest] = name.split(' ');
+  return rest.length ? `${first} ${rest[rest.length - 1]![0]}.` : first!;
+};
 
 function Legend({ style, label }: { style: StyleProp<ViewStyle>; label: string }) {
   return (
@@ -475,10 +699,27 @@ const styles = StyleSheet.create({
   seatFree: { backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border },
   seatTaken: { backgroundColor: colors.border },
   seatSelected: { backgroundColor: colors.primary },
+  seatCompanion: { backgroundColor: colors.accent },
+  // Paid earlier: shown as mine, not tappable.
+  seatPaid: { opacity: 0.55 },
+  // The chosen seat the next tap moves.
+  seatMoving: { borderWidth: 3, borderColor: colors.navy },
+  targets: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  target: { minHeight: 36, paddingHorizontal: 14, borderRadius: radii.pill, borderWidth: 1.5, borderColor: colors.border, backgroundColor: colors.card, justifyContent: 'center' },
+  targetOn: { backgroundColor: colors.primary, borderColor: colors.primary },
+  targetOnCompanion: { backgroundColor: colors.accent, borderColor: colors.accent },
+  targetText: { ...typo.smallStrong, color: colors.navy },
   seatText: { ...typo.smallStrong, color: colors.navy },
+  seatInitials: { ...typo.smallStrong, color: '#fff' },
+  mapHint: { ...typo.caption, color: colors.muted2, lineHeight: 17 },
+  mapDone: { flex: 0 },
   picked: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   pickedSeat: { width: 44, height: 44, borderRadius: radii.sm, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center' },
   pickedSeatText: { ...typo.title, color: '#fff' },
+  pickedCompanion: { backgroundColor: colors.accent },
+  pickedActions: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' },
+  addCompanion: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  addCompanionText: { ...typo.smallStrong, color: colors.primary },
   change: { color: colors.orangeText, fontWeight: '700' },
   seatActions: { flexDirection: 'row', gap: 10 },
   seatAction: {

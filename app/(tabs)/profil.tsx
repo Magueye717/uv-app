@@ -3,16 +3,18 @@ import { router, type Href } from 'expo-router';
 import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { SpacesList } from '@/components/SpacesList';
 import { colors, radii, shadow, typo } from '@/constants/theme';
 import { useAuth } from '@/context/AuthContext';
 import { useNotifications } from '@/context/NotificationsContext';
 
-type Row = { icon: keyof typeof Ionicons.glyphMap; label: string; href?: Href; badge?: number; onPress?: () => void };
+/** `todo`: something to fill in ("À compléter"). */
+type Row = { icon: keyof typeof Ionicons.glyphMap; label: string; href?: Href; badge?: number; todo?: boolean; onPress?: () => void };
 
 const soon = (label: string) => Alert.alert(label, 'Bientôt disponible dans l’app.');
 
 export default function ProfilScreen() {
-  const { user, organizer, spaces, switchSpace, logout } = useAuth();
+  const { user, logout } = useAuth();
   const academic = [user?.ufr, user?.filiere, user?.niveau].filter(Boolean).join(' · ');
   const { unreadCount } = useNotifications();
 
@@ -22,6 +24,7 @@ export default function ProfilScreen() {
       title: 'Mon compte',
       rows: [
         { icon: 'person-outline', label: 'Informations personnelles' },
+        { icon: 'school-outline', label: 'Mon UFR et ma région', href: '/mes-etudes', todo: !user?.ufrCode || !user.region },
         { icon: 'card-outline', label: 'Carte étudiant' },
       ],
     },
@@ -33,10 +36,6 @@ export default function ProfilScreen() {
         { icon: 'bag-handle-outline', label: 'Mon panier', href: '/panier' },
       ],
     },
-    // Only for accounts the web platform made organizers too (e.g. an association's president).
-    ...(spaces.includes('organizer') && organizer
-      ? [{ title: 'Organisateur', rows: [{ icon: 'swap-horizontal', label: `Passer à l’espace ${organizer.name}`, onPress: switchSpace } as Row] }]
-      : []),
     {
       title: 'Préférences',
       rows: [{ icon: 'notifications-outline', label: 'Notifications', href: '/notifications', badge: unreadCount }],
@@ -67,6 +66,9 @@ export default function ProfilScreen() {
           </View>
         </View>
 
+        {/* An organizer, restaurant staff, the communication team…: their other spaces, one tap away. */}
+        <SpacesList />
+
         {groups.map((g) => (
           <View key={g.title} style={{ gap: 8 }}>
             <Text style={styles.groupTitle}>{g.title}</Text>
@@ -77,7 +79,7 @@ export default function ProfilScreen() {
                   onPress={() => (r.onPress ? r.onPress() : r.href ? router.push(r.href) : soon(r.label))}
                   style={({ pressed }) => [styles.row, i > 0 && styles.rowDivider, pressed && { backgroundColor: colors.primarySofter }]}
                   accessibilityRole="button"
-                  accessibilityLabel={r.badge ? `${r.label}, ${r.badge} non lues` : r.label}>
+                  accessibilityLabel={r.badge ? `${r.label}, ${r.badge} non lues` : r.todo ? `${r.label}, à compléter` : r.label}>
                   <View style={styles.rowIcon}>
                     <Ionicons name={r.icon} size={18} color={colors.primary} />
                   </View>
@@ -87,6 +89,7 @@ export default function ProfilScreen() {
                       <Text style={styles.badgeText} maxFontSizeMultiplier={1.2}>{r.badge}</Text>
                     </View>
                   )}
+                  {r.todo && <Text style={styles.todo}>À compléter</Text>}
                   <Ionicons name="chevron-forward" size={18} color={colors.muted} />
                 </Pressable>
               ))}
@@ -120,6 +123,7 @@ const styles = StyleSheet.create({
   rowLabel: { flex: 1, fontSize: 14, fontWeight: '600', color: colors.navy },
   badge: { minWidth: 22, height: 22, paddingHorizontal: 6, borderRadius: 11, backgroundColor: colors.accent, alignItems: 'center', justifyContent: 'center' },
   badgeText: { ...typo.captionStrong, color: '#fff' },
+  todo: { ...typo.captionStrong, color: colors.orangeText },
   logout: { flexDirection: 'row', gap: 8, alignSelf: 'center', alignItems: 'center', padding: 16 },
   logoutText: { ...typo.title, color: colors.dangerText },
 });

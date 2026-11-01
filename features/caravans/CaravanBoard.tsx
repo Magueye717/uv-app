@@ -9,7 +9,7 @@ import { Field, Segmented } from '@/components/ui';
 import { formatFcfa, type Caravan, type CaravanDirection } from '@/constants/data';
 import { colors, radii, shadow, typo } from '@/constants/theme';
 import { useCaravans } from '@/context/CaravansContext';
-import { dayLabel, hourLabel } from '@/features/caravans/api';
+import { byDeparture, dayLabel, hourLabel } from '@/features/caravans/api';
 import { ApiError } from '@/lib/api';
 import { matches } from '@/lib/search';
 
@@ -36,6 +36,8 @@ export function CaravanBoard() {
     .map((c) => ({ c, via: q ? findStop(c, q) : null }))
     .filter(({ c, via }) => !q || via || matches(q, [c.from, c.to, c.organizer.name]));
   const active = tickets.filter((t) => t.status === 'active' && Date.parse(t.event.startsAt) > Date.now() - 12 * 3_600_000);
+  // One card per departure: my seat and my companions' tickets together ("2 billets").
+  const trips = byDeparture(active);
 
   const answer = (id: string, yes: boolean) =>
     (yes ? accept(id).then((ticketId) => ticketId && router.push(`/billet/${ticketId}`)) : decline(id)).catch((err) =>
@@ -77,7 +79,7 @@ export function CaravanBoard() {
                 <Ionicons name="gift-outline" size={20} color={colors.primary} />
               </View>
               <View style={{ flex: 1 }}>
-                <Text style={styles.ticketRoute}>{x.from.name} t’offre son billet</Text>
+                <Text style={styles.ticketRoute}>{x.forCompanion ? `${x.from.name} t’a réservé une place` : `${x.from.name} t’offre son billet`}</Text>
                 <Text style={styles.ticketMeta}>
                   {x.event?.title} · {x.event ? `${dayLabel(Date.parse(x.event.startsAt))} · ${hourLabel(Date.parse(x.details.pickup.at))}` : ''} · Place {x.seat}
                 </Text>
@@ -94,26 +96,35 @@ export function CaravanBoard() {
           </View>
         ))}
 
-        {active.length > 0 && (
+        {trips.length > 0 && (
           <View style={{ gap: 8 }}>
             <Text style={styles.section}>Mes billets</Text>
-            {active.map((t) => {
+            {trips.map((group) => {
+              const t = group[0]!;
               const at = Date.parse(t.event.startsAt);
+              const seats = group.map((x) => x.seat).join(' et ');
               return (
                 <Pressable
                   key={t.id}
                   style={[styles.ticket, shadow.card]}
                   onPress={() => router.push(`/billet/${t.id}`)}
                   accessibilityRole="button"
-                  accessibilityLabel={`Billet ${t.event.title}, ${dayLabel(at)}, place ${t.seat}`}>
+                  accessibilityLabel={`${group.length > 1 ? `${group.length} billets` : 'Billet'} ${t.event.title}, ${dayLabel(at)}, place ${seats}`}>
                   <View style={styles.ticketIcon}>
                     <Ionicons name="qr-code-outline" size={20} color={colors.primary} />
                   </View>
                   <View style={{ flex: 1 }}>
-                    <Text style={styles.ticketRoute}>{t.event.title}</Text>
+                    <View style={styles.ticketTitleRow}>
+                      <Text style={styles.ticketRoute}>{t.event.title}</Text>
+                      {group.length > 1 && (
+                        <View style={styles.countBadge}>
+                          <Text style={styles.countBadgeText}>{group.length} billets</Text>
+                        </View>
+                      )}
+                    </View>
                     <Text style={styles.ticketMeta}>
-                      {dayLabel(at)} · {hourLabel(Date.parse(t.details.pickup.at))} · Place {t.seat}
-                      {t.transfer?.status === 'pending' ? ' · transfert en attente' : ''}
+                      {dayLabel(at)} · {hourLabel(Date.parse(t.details.pickup.at))} · {group.length > 1 ? 'Places' : 'Place'} {seats}
+                      {group.some((x) => x.transfer?.status === 'pending') ? ' · transfert en attente' : ''}
                     </Text>
                   </View>
                   <Ionicons name="chevron-forward" size={16} color={colors.muted} />
@@ -180,10 +191,12 @@ export function CaravanBoard() {
                   </Pressable>
                 ) : (
                   <Pressable
-                    style={[styles.book, (closed || c.purchasedHere) && !c.myBooking && styles.bookOff]}
-                    disabled={(closed || c.purchasedHere) && !c.myBooking}
+                    style={[styles.book, (closed || !c.mySeatsLeft) && !c.myBooking && styles.bookOff]}
+                    disabled={(closed || !c.mySeatsLeft) && !c.myBooking}
                     onPress={() => router.push(`/caravane/${c.id}`)}>
-                    <Text style={styles.bookText}>{c.myBooking ? 'Payer' : c.purchasedHere ? 'Billet offert' : c.seats ? (c.bookingOpen ? 'Réserver' : 'Fermé') : 'Complet'}</Text>
+                    <Text style={styles.bookText}>
+                      {c.myBooking ? 'Payer' : !c.mySeatsLeft ? (c.purchasedHere ? 'Billet offert' : 'Limite atteinte') : c.seats ? (c.bookingOpen ? 'Réserver' : 'Fermé') : 'Complet'}
+                    </Text>
                   </Pressable>
                 )}
               </View>
@@ -224,6 +237,9 @@ const styles = StyleSheet.create({
   bookMine: { flexDirection: 'row', gap: 5, backgroundColor: colors.primarySoft },
   section: { ...typo.title, color: colors.navy },
   ticket: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: colors.card, borderRadius: radii.md, padding: 12 },
+  ticketTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  countBadge: { backgroundColor: colors.primarySoft, borderRadius: radii.pill, paddingHorizontal: 8, paddingVertical: 2 },
+  countBadgeText: { ...typo.label, color: colors.primary },
   ticketIcon: { width: 40, height: 40, borderRadius: radii.sm, backgroundColor: colors.primarySoft, alignItems: 'center', justifyContent: 'center' },
   ticketRoute: { ...typo.title, color: colors.navy },
   ticketMeta: { ...typo.caption, color: colors.muted2, marginTop: 2 },

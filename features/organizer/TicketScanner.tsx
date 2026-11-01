@@ -39,6 +39,18 @@ export function TicketScanner({
   const flashStyle = useAnimatedStyle(() => ({ opacity: flash.get() }));
 
   const [checking, setChecking] = useState(false);
+  const [boarding, setBoarding] = useState(false);
+  const boardOthers = async () => {
+    if (!result?.boardOthers || !result.group || boarding) return;
+    setBoarding(true);
+    try {
+      const others = await result.boardOthers();
+      haptics.success();
+      setResult({ ...result, group: { ...result.group, others }, boardOthers: undefined });
+    } finally {
+      setBoarding(false);
+    }
+  };
   const read = async (raw: string) => {
     if (result || checking || !raw.trim()) return; // the camera keeps firing while the code is in view
     setChecking(true);
@@ -87,6 +99,32 @@ export function TicketScanner({
           </Animated.View>
           <Text style={styles.resultTitle}>{result.title}</Text>
           <Text style={styles.resultText}>{result.text}</Text>
+          {result.group && (
+            <View style={styles.group}>
+              <Text style={styles.groupTitle}>
+                Groupe de {result.group.purchaser} · {result.group.size} billets
+              </Text>
+              {result.group.others.map((o) => (
+                <View key={o.ticketId} style={styles.groupRow}>
+                  <Ionicons name={o.admitted ? 'checkmark-circle' : 'ellipse-outline'} size={18} color={o.admitted ? colors.success : colors.muted} />
+                  <Text style={styles.groupName} numberOfLines={1}>
+                    Place {o.seat} · {o.name}
+                  </Text>
+                  <Text style={[styles.groupState, o.admitted && { color: colors.successText }]}>{o.admitted ? 'à bord' : 'pas encore'}</Text>
+                </View>
+              ))}
+              {result.boardOthers && result.group.others.some((o) => !o.admitted) && (
+                <Pressable style={styles.boardAll} onPress={boardOthers} disabled={boarding} accessibilityRole="button">
+                  <Ionicons name="people-outline" size={18} color={colors.primary} />
+                  <Text style={styles.boardAllText}>
+                    {boarding
+                      ? 'Embarquement…'
+                      : `Faire monter ${result.group.others.filter((o) => !o.admitted).length > 1 ? 'les autres' : result.group.others.find((o) => !o.admitted)!.name} aussi`}
+                  </Text>
+                </Pressable>
+              )}
+            </View>
+          )}
           <Pressable style={styles.next} onPress={() => setResult(null)} accessibilityRole="button">
             <Ionicons name="qr-code-outline" size={18} color="#fff" />
             <Text style={styles.nextText}>Billet suivant</Text>
@@ -146,4 +184,11 @@ const styles = StyleSheet.create({
   },
   nextText: { ...typo.title, color: '#fff' },
   link: { ...typo.bodyStrong, color: colors.orangeText, paddingVertical: 6 },
+  group: { alignSelf: 'stretch', gap: 8, padding: 12, borderRadius: radii.md, backgroundColor: colors.primarySoft, marginBottom: 6 },
+  groupTitle: { ...typo.label, color: colors.primary },
+  groupRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  groupName: { ...typo.bodyStrong, flex: 1, color: colors.navy },
+  groupState: { ...typo.caption, color: colors.muted2 },
+  boardAll: { flexDirection: 'row', gap: 8, alignItems: 'center', justifyContent: 'center', minHeight: 44, borderRadius: radii.pill, borderWidth: 1.5, borderColor: colors.primary, backgroundColor: colors.card },
+  boardAllText: { ...typo.bodyStrong, color: colors.primary },
 });

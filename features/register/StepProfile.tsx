@@ -13,6 +13,9 @@ import {
   validateConfirm,
   validateName,
   validatePassword,
+  REGIONS,
+  UFRS,
+  ufrLabel,
   validateRoom,
   VILLAGES,
   type CampusKey,
@@ -26,6 +29,10 @@ export type ProfileValues = {
   onCampus: boolean;
   village: string | null;
   room: string;
+  /** UFR code: announcements for a UFR reach the student. */
+  ufr: string | null;
+  /** Home region. */
+  region: string | null;
   password: string;
   confirm: string;
   accepted: boolean;
@@ -39,7 +46,7 @@ type Props = {
   submitError: string | null;
 };
 
-type FieldKey = 'firstName' | 'lastName' | 'campus' | 'village' | 'room' | 'password' | 'confirm' | 'accepted';
+type FieldKey = 'firstName' | 'lastName' | 'ufr' | 'region' | 'campus' | 'village' | 'room' | 'password' | 'confirm' | 'accepted';
 
 // Same accent as the welcome screen.
 const ACCENT = colors.orange;
@@ -51,6 +58,8 @@ export function StepProfile({ values, onChange, onSubmit, submitting, submitErro
   const errors: Record<FieldKey, string | null> = {
     firstName: validateName(values.firstName, 'prénom'),
     lastName: validateName(values.lastName, 'nom'),
+    ufr: values.ufr ? null : 'Choisis ton UFR',
+    region: values.region ? null : 'Choisis ta région d’origine',
     campus: values.campus ? null : 'Choisis ton campus',
     village: !values.onCampus || values.village ? null : 'Choisis ton village',
     room: values.onCampus ? validateRoom(values.room) : null,
@@ -99,13 +108,40 @@ export function StepProfile({ values, onChange, onSubmit, submitting, submitErro
         </View>
       </Section>
 
+      <Section icon="school-outline" title="Tes études et ta région">
+        <LabeledField label="UFR" error={shown('ufr')}>
+          <Select
+            icon="school-outline"
+            title="Ton UFR"
+            placeholder="Choisir ton UFR"
+            value={values.ufr ? ufrLabel(values.ufr) : null}
+            options={UFRS.map((u) => ufrLabel(u.code))}
+            onChange={(label) => onChange({ ufr: UFRS.find((u) => ufrLabel(u.code) === label)?.code ?? null })}
+            onClose={() => touch('ufr')}
+            invalid={!!shown('ufr')}
+          />
+        </LabeledField>
+        <LabeledField label="Région d’origine" error={shown('region')}>
+          <Select
+            icon="map-outline"
+            title="Ta région d’origine"
+            placeholder="Choisir ta région"
+            value={values.region}
+            options={[...REGIONS]}
+            onChange={(region) => onChange({ region })}
+            onClose={() => touch('region')}
+            invalid={!!shown('region')}
+          />
+        </LabeledField>
+      </Section>
+
       <Section icon="business-outline" title="Ton campus" hint="Obligatoire">
         <View style={styles.row} accessibilityRole="radiogroup">
           {CAMPUSES.map((c) => (
             <CampusCard
               key={c.key}
               label={c.label}
-              detail={`${VILLAGES[c.key][0].replace('Village ', 'Villages ')} à ${VILLAGES[c.key].at(-1)!.replace('Village ', '')}`}
+              detail={c.detail}
               selected={values.campus === c.key}
               onPress={() => {
                 // Changing campus resets the village, since the list differs.

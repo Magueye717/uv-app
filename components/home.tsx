@@ -14,35 +14,77 @@ import {
   type ScrollViewInstance,
 } from 'react-native';
 
-import {
-  adBanners,
-  campusAlert,
-  formatFcfa,
-  mealTimes,
-  publicMenus,
-  schedule,
-  weekDays,
-  type DishStatus,
-} from '@/constants/data';
+import { adBanners, formatFcfa, schedule, weekDays } from '@/constants/data';
 import { colors, radii, shadow, typo } from '@/constants/theme';
+import { useAuth } from '@/context/AuthContext';
+import { useCampus } from '@/context/CampusContext';
 import { useCaravans } from '@/context/CaravansContext';
+import { currentMeal, type AlertDto, type DishStatus } from '@/features/restos/api';
 import { useTaxi } from '@/context/TaxiContext';
 
 const BODY_PADDING = 20;
 const AUTO_SCROLL_MS = 5000;
 
+const ALERT_TONES: Record<AlertDto['tone'], { bg: string; fg: string }> = {
+  danger: { bg: colors.dangerBg, fg: colors.danger },
+  warning: { bg: colors.warningBg, fg: colors.warning },
+  info: { bg: colors.primarySoft, fg: colors.primary },
+  success: { bg: colors.successBg, fg: colors.success },
+};
+/** The server names an Ionicons glyph; an unknown one falls back to a warning sign. */
+const alertIcon = (name: string) => (name in Ionicons.glyphMap ? (name as keyof typeof Ionicons.glyphMap) : 'warning-outline');
+/** At most this many at once: the home screen stays readable. */
+const MAX_ALERTS = 3;
+
+/** Campus notices and dishes sold out right now ("Rupture · Thiébou dieun · Resto 1"). Each can be hidden. */
 export function AlertStrip() {
-  const [visible, setVisible] = useState(true);
-  if (!visible) return null;
+  const { alerts } = useCampus();
+  const [hidden, setHidden] = useState<string[]>([]);
+  const shown = alerts.filter((a) => a.placement === 'banner' && !hidden.includes(a.id)).slice(0, MAX_ALERTS);
+  if (!shown.length) return null;
 
   return (
-    <Pressable style={styles.alert} onPress={() => router.push(campusAlert.href as never)}>
-      <Ionicons name={campusAlert.icon} size={20} color={colors.warning} />
+    <View style={{ gap: 8 }}>
+      {shown.map((a) => {
+        const tone = ALERT_TONES[a.tone];
+        return (
+          <Pressable
+            key={a.id}
+            style={[styles.alert, { backgroundColor: tone.bg, borderLeftColor: tone.fg }]}
+            onPress={() => a.href && router.push(a.href as never)}
+            disabled={!a.href}
+            accessibilityRole={a.href ? 'link' : undefined}>
+            <Ionicons name={alertIcon(a.icon)} size={20} color={tone.fg} />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.alertTitle}>{a.title}</Text>
+              {!!a.body && <Text style={styles.alertSub}>{a.body}</Text>}
+            </View>
+            <Pressable onPress={() => setHidden((h) => [...h, a.id])} hitSlop={10} accessibilityLabel="Masquer l’alerte">
+              <Ionicons name="close" size={18} color={colors.muted} />
+            </Pressable>
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+}
+
+/**
+ * Students who signed up before the UFR and region were asked: announcements for their UFR can't reach them yet.
+ * Can be put off for this session.
+ */
+export function OriginPrompt() {
+  const { user } = useAuth();
+  const [later, setLater] = useState(false);
+  if (!user?.studentId || (user.ufrCode && user.region) || later) return null;
+  return (
+    <Pressable style={[styles.alert, { backgroundColor: colors.primarySoft, borderLeftColor: colors.primary }]} onPress={() => router.push('/mes-etudes')} accessibilityRole="link">
+      <Ionicons name="school-outline" size={20} color={colors.primary} />
       <View style={{ flex: 1 }}>
-        <Text style={styles.alertTitle}>{campusAlert.title}</Text>
-        <Text style={styles.alertSub}>{campusAlert.subtitle}</Text>
+        <Text style={styles.alertTitle}>Indique ton UFR et ta région</Text>
+        <Text style={styles.alertSub}>Pour recevoir les annonces de ton UFR : examens, élections des délégués…</Text>
       </View>
-      <Pressable onPress={() => setVisible(false)} hitSlop={10} accessibilityLabel="Masquer l’alerte">
+      <Pressable onPress={() => setLater(true)} hitSlop={10} accessibilityLabel="Plus tard">
         <Ionicons name="close" size={18} color={colors.muted} />
       </Pressable>
     </Pressable>
@@ -354,51 +396,123 @@ export function CourseCard() {
   );
 }
 
+const DAYS = ['Dim.', 'Lun.', 'Mar.', 'Mer.', 'Jeu.', 'Ven.', 'Sam.'];
+const startOfDay = (t: number) => new Date(new Date(t).setHours(0, 0, 0, 0)).getTime();
+
+/** Right of an "À la une" item: the day it's about ("Jeu. 05"), else how long it's been up ("Hier"). */
+function headlineWhen(a: AlertDto, now: number) {
+  if (a.eventAt) {
+    const d = new Date(a.eventAt);
+    const days = Math.round((startOfDay(d.getTime()) - startOfDay(now)) / 86_400_000);
+    if (days === 0) return 'Aujourd’hui';
+    if (days === 1) return 'Demain';
+    return `${DAYS[d.getDay()]} ${String(d.getDate()).padStart(2, '0')}`;
+  }
+  const ago = Math.round((startOfDay(now) - startOfDay(Date.parse(a.startsAt))) / 86_400_000);
+  return ago <= 0 ? 'Aujourd’hui' : ago === 1 ? 'Hier' : `Il y a ${ago} j`;
+}
+
+export function HeadlineItem({ a }: { a: AlertDto }) {
+  const now = useNow();
+  // One neutral style; red only for what is urgent.
+  const urgent = a.tone === 'danger';
+  const content = (
+    <>
+      <View style={[styles.newsIcon, { backgroundColor: urgent ? colors.dangerBg : colors.primarySoft }]}>
+        <Ionicons name={alertIcon(a.icon)} size={18} color={urgent ? colors.dangerText : colors.primary} />
+      </View>
+      <View style={{ flex: 1 }}>
+        <View style={styles.newsTop}>
+          <Text style={[styles.newsTag, { color: urgent ? colors.dangerText : colors.muted2 }]}>{(a.tag ?? 'Info').toUpperCase()}</Text>
+          <Text style={styles.newsTime}>{headlineWhen(a, now)}</Text>
+        </View>
+        <Text style={styles.newsTitle}>{a.title}</Text>
+        {!!a.body && (
+          <Text style={styles.newsBody} numberOfLines={2}>
+            {a.body}
+          </Text>
+        )}
+      </View>
+    </>
+  );
+  return a.href ? (
+    <Pressable style={[styles.news, shadow.card]} onPress={() => router.push(a.href as never)} accessibilityRole="link">
+      {content}
+    </Pressable>
+  ) : (
+    <View style={[styles.news, shadow.card]}>{content}</View>
+  );
+}
+
+/** How many "À la une" items the home screen shows; the rest are one tap away. */
+const HOME_HEADLINES = 5;
+
+/** "À la une": announcements from the communication and academic teams, urgent first, then newest. */
+export function Headlines() {
+  const { alerts } = useCampus();
+  const items = alerts.filter((a) => a.placement === 'headline');
+  if (!items.length) return null;
+  return (
+    <View style={{ gap: 14 }}>
+      <View style={styles.newsHead}>
+        <Text style={styles.newsSection}>À la une</Text>
+        {items.length > HOME_HEADLINES && (
+          <Pressable onPress={() => router.push('/a-la-une')} hitSlop={10} accessibilityRole="link">
+            <Text style={styles.moreText}>Tout voir ({items.length})</Text>
+          </Pressable>
+        )}
+      </View>
+      {items.slice(0, HOME_HEADLINES).map((a) => (
+        <HeadlineItem key={a.id} a={a} />
+      ))}
+    </View>
+  );
+}
+
 const dishDot: Record<DishStatus, string> = {
   available: colors.success,
   low: colors.warning,
-  critical: colors.danger,
+  out: colors.muted,
 };
 
-// Lunch until it ends, then dinner, then tomorrow's lunch.
-export function currentMeal(now: number) {
-  const d = new Date(now);
-  const h = d.getHours() + d.getMinutes() / 60;
-  const { lunch, dinner } = mealTimes;
-  if (h < lunch.end)
-    return { key: 'lunch' as const, label: lunch.label, status: h < lunch.start ? `Dès ${lunch.start}h` : `Servi jusqu'à ${lunch.end}h`, live: h >= lunch.start };
-  if (h < dinner.end)
-    return { key: 'dinner' as const, label: dinner.label, status: h < dinner.start ? `Dès ${dinner.start}h` : `Servi jusqu'à ${dinner.end}h`, live: h >= dinner.start };
-  return { key: 'lunch' as const, label: lunch.label, status: `Demain ${lunch.start}h`, live: false };
-}
-
+/** The public restaurants' current meal, one line per restaurant; a sold-out dish is struck through. */
 export function RestoCard() {
-  const meal = currentMeal(useNow());
+  const { restos: day } = useCampus();
+  const meal = currentMeal(useNow(), day?.restos ?? []);
+  const openMenus = () => router.push({ pathname: '/(tabs)/resto', params: { vue: 'publics' } });
 
   return (
     <View style={[styles.infoCard, shadow.card]}>
-      <View style={styles.rowBetween}>
+      <Pressable style={styles.rowBetween} onPress={openMenus} accessibilityRole="link">
         <View style={styles.label}>
           <Ionicons name="restaurant-outline" size={12} color={colors.primary} />
           <Text style={styles.labelText}>RESTOS PUBLICS · {meal.label.toUpperCase()}</Text>
         </View>
         <Text style={[styles.mealStatus, { color: meal.live ? colors.successText : colors.muted2 }]}>{meal.status}</Text>
-      </View>
+      </Pressable>
 
-      {publicMenus.map((menu) => (
-        <View key={menu.id} style={styles.restoRow}>
-          <Text style={styles.restoName}>{menu.name.replace('Menu ', '')}</Text>
-          {/* One line per restaurant: the text shrinks a little rather than wrapping. */}
-          <Text style={styles.dishLine} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8}>
-            {(meal.key === 'lunch' ? menu.dishes : menu.dinner).map((d, i) => (
-              <Text key={d.name}>
-                {i > 0 ? '   ' : ''}
-                <Text style={[styles.dishDot, { color: dishDot[d.status] }]}>●</Text> {d.name}
-              </Text>
-            ))}
-          </Text>
-        </View>
-      ))}
+      {!day && <Text style={styles.dishLine}>Chargement des menus…</Text>}
+      {day?.restos.length === 0 && <Text style={styles.dishLine}>Aucun restaurant pour l’instant.</Text>}
+      {day?.restos.map((r) => {
+        const dishes = r.menus[meal.key]?.dishes ?? [];
+        return (
+          <Pressable key={r.id} style={styles.restoRow} onPress={openMenus}>
+            <Text style={styles.restoName}>{r.name}</Text>
+            {/* One line per restaurant: the text shrinks a little rather than wrapping. */}
+            <Text style={styles.dishLine} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8}>
+              {dishes.length
+                ? dishes.map((d, i) => (
+                    <Text key={d.id}>
+                      {i > 0 ? '   ' : ''}
+                      <Text style={[styles.dishDot, { color: dishDot[d.status] }]}>●</Text>{' '}
+                      <Text style={d.status === 'out' ? styles.dishOut : undefined}>{d.name}</Text>
+                    </Text>
+                  ))
+                : 'Menu pas encore publié'}
+            </Text>
+          </Pressable>
+        );
+      })}
 
       <Pressable style={styles.more} onPress={() => router.push({ pathname: '/(tabs)/resto', params: { vue: 'restos' } })}>
         <Text style={styles.moreText}>Voir les restos privés</Text>
@@ -421,6 +535,16 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
   },
   alertTitle: { ...typo.bodyStrong, color: colors.navy },
+  newsHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 8 },
+  newsSection: { ...typo.h2, color: colors.navy },
+  news: { backgroundColor: colors.card, borderRadius: radii.lg, padding: 14, flexDirection: 'row', gap: 12, alignItems: 'center' },
+  newsIcon: { width: 40, height: 40, borderRadius: radii.sm, alignItems: 'center', justifyContent: 'center' },
+  newsTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 2 },
+  newsTag: { ...typo.label, letterSpacing: 0.4 },
+  newsTime: { fontSize: 11, color: colors.muted2 },
+  newsTitle: { ...typo.bodyStrong, color: colors.navy },
+  newsBody: { ...typo.small, color: colors.muted2, marginTop: 2 },
+  dishOut: { textDecorationLine: 'line-through', color: colors.muted },
   alertSub: { ...typo.caption, color: colors.muted2, marginTop: 2 },
 
   bannerTrack: { borderRadius: radii.lg },

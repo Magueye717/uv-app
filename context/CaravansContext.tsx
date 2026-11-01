@@ -3,7 +3,7 @@ import { AppState } from 'react-native';
 
 import type { Caravan } from '@/constants/data';
 import { useAuth } from '@/context/AuthContext';
-import { caravansApi, toCaravan, type IncomingTransferDto, type TicketDto } from '@/features/caravans/api';
+import { caravansApi, toCaravan, type IncomingTransferDto, type SeatRequest, type TicketDto } from '@/features/caravans/api';
 import { realtime } from '@/features/chat/realtime';
 import { payInBrowser, type PaymentDto, type PaymentMethod } from '@/features/payments/checkout';
 
@@ -20,10 +20,10 @@ type CaravansValue = {
   tickets: TicketDto[];
   /** Tickets friends want to give me, waiting for my answer. */
   incoming: IncomingTransferDto[];
-  /** My valid ticket for a departure. */
+  /** The valid ticket I travel on for a departure (not the companions' ones I hold). */
   ticketFor: (caravanId: string) => TicketDto | undefined;
-  /** Holds the seat, opens Wave / Orange Money, and waits for the server's answer. */
-  book: (caravanId: string, input: { seat?: number; pickupStopId: string; dropoffStopId: string; method: PaymentMethod }) => Promise<BookingOutcome>;
+  /** Holds the seats (mine and/or companions'), opens Wave / Orange Money once, and waits for the server's answer. */
+  book: (caravanId: string, input: { seats: SeatRequest[]; pickupStopId: string; dropoffStopId: string; method: PaymentMethod }) => Promise<BookingOutcome>;
   /** Back to the payment page for a seat taken but not paid yet. */
   resume: (caravan: Caravan) => Promise<BookingOutcome>;
   release: (bookingId: string) => Promise<void>;
@@ -124,7 +124,7 @@ export function CaravansProvider({ children }: { children: ReactNode }) {
       refresh,
       tickets,
       incoming,
-      ticketFor: (caravanId) => tickets.find((t) => t.details.departureId === caravanId && t.status === 'active'),
+      ticketFor: (caravanId) => tickets.find((t) => t.details.departureId === caravanId && t.status === 'active' && !t.passenger),
       book: async (caravanId, input) => {
         const { booking, payment } = await caravansApi.book(caravanId, input);
         return settle(booking.id, payment);

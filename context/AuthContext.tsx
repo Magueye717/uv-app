@@ -22,7 +22,11 @@ export type Profile = {
   studentId: string | null;
   /** Masked by the server: "+221 77 ••• •• 02". */
   phone: string;
+  /** "UFR SAT", for display. */
   ufr: string | null;
+  /** UFR code ("SAT") and home region: announcements are targeted on them. Null until the student gives them. */
+  ufrCode: string | null;
+  region: string | null;
   filiere: string | null;
   niveau: string | null;
   email: string | null;
@@ -31,8 +35,21 @@ export type Profile = {
 /** The organization this account manages. `orgId` (= `id`) is what /org/{orgId} calls use. */
 export type AccountOrganizer = CaravanOrganizer & { orgId: string; slug: string; roles: string[] };
 
-/** Which part of the app is shown: students book, organizers check their passengers. */
-export type Space = 'student' | 'organizer';
+/**
+ * Which part of the app is shown, decided by the backend from the account: students book, organizers check their
+ * passengers, and platform roles open work spaces (restaurant stock levels, campus alerts). The first one is home;
+ * the others are listed under "Mes espaces".
+ */
+export type Space = 'student' | 'organizer' | 'resto' | 'alerts';
+
+/** The first screen of a space. */
+export function spaceHome(space: Space | null) {
+  if (space === 'organizer') return '/activites' as const;
+  if (space === 'resto') return '/menus' as const;
+  if (space === 'alerts') return '/alertes' as const;
+  if (space === 'student') return '/(tabs)' as const;
+  return '/(auth)/welcome' as const;
+}
 
 type AuthValue = {
   /** `restoring` while the saved session is checked at start-up. */
@@ -47,8 +64,10 @@ type AuthValue = {
   login: (identifier: string, password: string) => Promise<void>;
   /** After sign-up or a password reset: tokens already obtained, load the account and enter the app. */
   completeSignIn: (tokens: Tokens) => Promise<void>;
-  /** Opens the other space, through the /espace transition screen. */
-  switchSpace: () => void;
+  /** Reads the account again (after changing the profile). */
+  reloadAccount: () => Promise<void>;
+  /** Opens another of the account's spaces, through the /espace transition screen. */
+  openSpace: (space: Space) => void;
   /** Used by /espace only: flips the guards while no protected screen is focused. */
   setSpace: (space: Space) => void;
   logout: () => Promise<void>;
@@ -60,8 +79,9 @@ type MeResponse = {
   lastName: string;
   initials: string;
   phoneMasked: string;
-  student: { studentNumber: string; campus: string; onCampus: boolean; village: string | null; room: string | null; ufr: string | null; filiere: string | null; niveau: string | null } | null;
+  student: { studentNumber: string; campus: string; onCampus: boolean; village: string | null; room: string | null; ufr: string | null; region: string | null; filiere: string | null; niveau: string | null } | null;
   spaces: Space[];
+  platformRoles: string[];
   organizations: { id: string; name: string; category: string; level: string; roles: string[] }[];
   email: { address: string; verified: boolean } | null;
 };
@@ -92,7 +112,9 @@ function toProfile(me: MeResponse): Profile {
     room: s?.room ?? null,
     studentId: s?.studentNumber ?? null,
     phone: `+221 ${me.phoneMasked}`,
-    ufr: s?.ufr ?? null,
+    ufr: s?.ufr ? `UFR ${s.ufr}` : null,
+    ufrCode: s?.ufr ?? null,
+    region: s?.region ?? null,
     filiere: s?.filiere ?? null,
     niveau: s?.niveau ?? null,
     email: me.email?.address ?? null,
@@ -138,8 +160,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(toProfile(me));
     setOrganizer(org);
     setSpaces(me.spaces);
-    // A student who also organizes starts on the student side; an organizer-only account on its own.
-    setSpace(me.spaces[0] ?? null);
+    // Signing in opens the first space (a student stays a student); reloading keeps the one on screen.
+    setSpace((current) => (current && me.spaces.includes(current) ? current : (me.spaces[0] ?? null)));
     setStatus('signedIn');
   }, []);
 
@@ -189,9 +211,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       space,
       login: async (identifier, password) => completeSignIn(await signIn(identifier, password)),
       completeSignIn,
-      switchSpace: () => {
-        const next = spaces.find((s) => s !== space);
-        if (!next) return;
+      reloadAccount: loadAccount,
+      openSpace: (next) => {
+        if (next === space || !spaces.includes(next)) return;
         router.replace({ pathname: '/espace', params: { vers: next } });
       },
       setSpace: (next) => {
@@ -207,7 +229,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         router.replace('/(auth)/login');
       },
     }),
-    [status, user, organizer, spaces, space, completeSignIn, reset],
+    [status, user, organizer, spaces, space, completeSignIn, reset, loadAccount],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

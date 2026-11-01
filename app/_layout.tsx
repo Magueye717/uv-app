@@ -2,7 +2,8 @@ import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 
 import { colors } from '@/constants/theme';
-import { AuthProvider, useAuth } from '@/context/AuthContext';
+import { AuthProvider, spaceHome, useAuth } from '@/context/AuthContext';
+import { CampusProvider } from '@/context/CampusContext';
 import { CaravansProvider } from '@/context/CaravansContext';
 import { CartProvider } from '@/context/CartContext';
 import { LostProvider } from '@/context/LostContext';
@@ -24,7 +25,7 @@ function NotificationRouter() {
 function Screens() {
   const { space } = useAuth();
   // Where a blocked screen sends you: the other space when switching, sign-in when logged out.
-  const home = space === 'organizer' ? '/activites' : space === 'student' ? '/(tabs)' : '/(auth)/welcome';
+  const home = spaceHome(space);
   return (
     <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.bg } }}>
       <Stack.Screen name="index" />
@@ -33,6 +34,8 @@ function Screens() {
       <Stack.Protected guard={space === 'student'} redirectTo={home}>
         <Stack.Screen name="(tabs)" />
         <Stack.Screen name="notifications" />
+        <Stack.Screen name="a-la-une" />
+        <Stack.Screen name="mes-etudes" />
         <Stack.Screen name="services/[slug]" />
         <Stack.Screen name="services/cours" />
         <Stack.Screen name="services/objets" />
@@ -55,6 +58,9 @@ function Screens() {
         <Stack.Screen name="(organisateur)" />
         <Stack.Screen name="depart/[id]" />
       </Stack.Protected>
+      <Stack.Protected guard={space === 'resto' || space === 'alerts'} redirectTo={home}>
+        <Stack.Screen name="(staff)" />
+      </Stack.Protected>
     </Stack>
   );
 }
@@ -63,24 +69,27 @@ export default function RootLayout() {
   return (
     <AuthProvider>
       <NotificationsProvider>
-        <CartProvider>
-          <OrdersProvider>
-            <CaravansProvider>
-              {/* Every conversation (taxi now, lost & found next) and the app's WebSocket. */}
-              <ChatsProvider>
-                <TaxiProvider>
-                  <LostProvider>
-                    <NotificationRouter />
-                    <StatusBar style="light" />
-                    <Screens />
-                    {/* Above every screen while there's no connection. */}
-                    <OfflineBanner />
-                  </LostProvider>
-                </TaxiProvider>
-              </ChatsProvider>
-            </CaravansProvider>
-          </OrdersProvider>
-        </CartProvider>
+        {/* Restaurants' menus and the home screen's alerts. */}
+        <CampusProvider>
+          <CartProvider>
+            <OrdersProvider>
+              <CaravansProvider>
+                {/* Every conversation (taxi now, lost & found next) and the app's WebSocket. */}
+                <ChatsProvider>
+                  <TaxiProvider>
+                    <LostProvider>
+                      <NotificationRouter />
+                      <StatusBar style="light" />
+                      <Screens />
+                      {/* Above every screen while there's no connection. */}
+                      <OfflineBanner />
+                    </LostProvider>
+                  </TaxiProvider>
+                </ChatsProvider>
+              </CaravansProvider>
+            </OrdersProvider>
+          </CartProvider>
+        </CampusProvider>
       </NotificationsProvider>
     </AuthProvider>
   );

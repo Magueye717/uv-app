@@ -6,7 +6,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { ed25519 } from '@noble/curves/ed25519.js';
 
 import { api } from '@/lib/api';
-import type { ManifestDto } from '@/features/caravans/api';
+import type { ManifestDto, ManifestPassenger, ScanGroup } from '@/features/caravans/api';
 
 export type OfflinePack = {
   generatedAt: string;
@@ -29,7 +29,7 @@ export type QueuedScan = {
   scannedAt: string;
 };
 
-export type OfflineResult = { tone: 'success' | 'warning' | 'danger'; title: string; text: string; caravanId?: string };
+export type OfflineResult = { tone: 'success' | 'warning' | 'danger'; title: string; text: string; caravanId?: string; group?: ScanGroup | null };
 
 const PACK = (departureId: string) => `ugb.offline.pack.${departureId}`;
 const PACKS = 'ugb.offline.packs';
@@ -156,14 +156,25 @@ export async function checkOffline(raw: string, orgId: string, departureId?: str
   return boardOffline(pack, orgId, ticketId, isQr ? { qr: value } : { code: value.toUpperCase() });
 }
 
+/** The buyer's other seats on the departure, as the server's scan answer gives them (from the kept list). */
+function groupOf(passengers: ManifestPassenger[], p: ManifestPassenger): ScanGroup | null {
+  // Packs saved before companions existed have no purchaser.
+  if (!p.purchaser) return null;
+  const others = passengers.filter((x) => x.purchaser?.id === p.purchaser.id && x.ticketId !== p.ticketId);
+  if (!others.length) return null;
+  return { size: others.length + 1, purchaser: p.purchaser.name, others: others.map((o) => ({ ticketId: o.ticketId, seat: o.seat, name: o.name, admitted: o.admitted })) };
+}
+
 /** "Faire monter" from the list while offline. */
 export async function boardOffline(pack: OfflinePack, orgId: string, ticketId: string, how: { qr?: string; code?: string } = {}): Promise<OfflineResult> {
-  const p = pack.manifest.passengers.find((x) => x.ticketId === ticketId)!;
+  // With the scans already queued on this phone: someone boarded offline is on board.
+  const passengers = (await withQueued(pack)).manifest.passengers;
+  const p = passengers.find((x) => x.ticketId === ticketId)!;
   const eventId = pack.manifest.departure.id;
-  const waiting = await queued();
   const who = `${p.name}${p.seat ? ` · place ${p.seat}` : ''}`;
-  if (p.admitted || waiting.some((s) => s.ticketId === ticketId)) {
-    return { tone: 'warning', title: 'Déjà à bord', text: `${who}. Vérifie qu’il n’y a pas deux personnes avec ce billet.`, caravanId: eventId };
+  const group = groupOf(passengers, p);
+  if (p.admitted) {
+    return { tone: 'warning', title: 'Déjà à bord', text: `${who}. Vérifie qu’il n’y a pas deux personnes avec ce billet.`, caravanId: eventId, group };
   }
   await enqueue({ clientScanId: newScanId(), orgId, eventId, ticketId, ...how, scannedAt: new Date().toISOString() });
   const d = pack.manifest.departure;
@@ -174,8 +185,15 @@ export async function boardOffline(pack: OfflinePack, orgId: string, ticketId: s
   return {
     tone: elsewhere ? 'warning' : 'success',
     title: who,
-    text: `${elsewhere ? `Monte à ${here.place} au lieu de ${booked.place}. ` : ''}Descend à ${dropoff ?? '?'}. Hors ligne : envoyé dès le retour du réseau.`,
+    text: [
+      p.companionOf ? `Accompagnant de ${p.companionOf}. Vérifie le nom sur sa pièce d’identité.` : '',
+      elsewhere ? `Monte à ${here.place} au lieu de ${booked.place}.` : '',
+      `Descend à ${dropoff ?? '?'}. Hors ligne : envoyé dès le retour du réseau.`,
+    ]
+      .filter(Boolean)
+      .join(' '),
     caravanId: eventId,
+    group,
   };
 }
 

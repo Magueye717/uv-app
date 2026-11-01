@@ -1,6 +1,6 @@
 import { useAuth } from '@/context/AuthContext';
-import { caravansApi, newScanId } from '@/features/caravans/api';
-import { checkOffline } from '@/features/organizer/offline';
+import { caravansApi, newScanId, type ScanGroup } from '@/features/caravans/api';
+import { boardOffline, checkOffline, loadPack } from '@/features/organizer/offline';
 import { ApiError } from '@/lib/api';
 
 export type ScanResult = {
@@ -9,6 +9,10 @@ export type ScanResult = {
   text: string;
   /** The departure the ticket belongs to, to open its list. */
   caravanId?: string;
+  /** The buyer's other seats ("Groupe : 2 billets"), to board a pair together. */
+  group?: ScanGroup | null;
+  /** "Faire monter les 2": boards the group's others not on board yet; returns the group's new state. */
+  boardOthers?: () => Promise<ScanGroup['others']>;
 };
 
 /**
@@ -19,21 +23,44 @@ export type ScanResult = {
 export function useTicketCheck(departureId?: string) {
   const { organizer } = useAuth();
 
+  /** Boards one ticket picked by id (a companion standing next to the scanned passenger), online or from the kept list. */
+  const boardById = async (orgId: string, eventId: string, ticketId: string): Promise<boolean> => {
+    try {
+      const r = await caravansApi.scan(orgId, { ticketId, eventId, clientScanId: newScanId() });
+      return r.result !== 'rejected';
+    } catch (err) {
+      if (!(err instanceof ApiError && err.isNetwork)) return false;
+      const pack = await loadPack(eventId);
+      return !!pack && (await boardOffline(pack, orgId, ticketId)).tone !== 'danger';
+    }
+  };
+
+  const withGroup = (orgId: string, r: Omit<ScanResult, 'boardOthers'>): ScanResult => {
+    const { group, caravanId } = r;
+    if (!group || !caravanId || r.tone === 'danger') return r;
+    return {
+      ...r,
+      boardOthers: async () =>
+        Promise.all(group.others.map(async (o) => (o.admitted ? o : { ...o, admitted: await boardById(orgId, caravanId, o.ticketId) }))),
+    };
+  };
+
   return async (raw: string): Promise<ScanResult> => {
     const value = raw.trim();
-    if (!organizer?.orgId) return { tone: 'danger', title: 'Pas d’organisation', text: 'Ce compte ne gère aucun départ.' };
+    const orgId = organizer?.orgId;
+    if (!orgId) return { tone: 'danger', title: 'Pas d’organisation', text: 'Ce compte ne gère aucun départ.' };
     // Signed QR payloads have three dot-separated parts; anything short is a typed code.
     const isQr = value.split('.').length === 3;
     try {
-      const r = await caravansApi.scan(organizer.orgId, {
+      const r = await caravansApi.scan(orgId, {
         ...(isQr ? { qr: value } : { code: value }),
         ...(departureId ? { eventId: departureId } : {}),
         clientScanId: newScanId(),
       });
-      return { tone: r.tone, title: r.title, text: r.text, caravanId: r.eventId ?? undefined };
+      return withGroup(orgId, { tone: r.tone, title: r.title, text: r.text, caravanId: r.eventId ?? undefined, group: r.result === 'rejected' ? null : r.group });
     } catch (err) {
       // No network on the road: the phone checks the QR itself with the list it keeps.
-      if (err instanceof ApiError && err.isNetwork) return checkOffline(value, organizer.orgId, departureId);
+      if (err instanceof ApiError && err.isNetwork) return withGroup(orgId, await checkOffline(value, orgId, departureId));
       return {
         tone: 'danger',
         title: err instanceof ApiError && err.isNetwork ? 'Pas de connexion' : 'Vérification impossible',

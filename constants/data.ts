@@ -1,6 +1,8 @@
 import type { ComponentProps } from 'react';
 import { Ionicons } from '@expo/vector-icons';
 
+import type { HeldBooking } from '@/features/caravans/api';
+
 import { colors } from './theme';
 
 type Ionicon = ComponentProps<typeof Ionicons>['name'];
@@ -35,70 +37,6 @@ export const services: {
   { key: 'bourses', label: 'Bourses', icon: 'school-outline', bg: '#E5F8EC', tint: colors.green, href: '/services/bourses' },
   { key: 'lieux', label: 'Lieux', icon: 'location-outline', bg: '#FFE8D4', tint: colors.orange, href: '/(tabs)/lieux' },
 ];
-
-export const headlines: {
-  id: string;
-  tag: string;
-  icon: Ionicon;
-  tint: string;
-  bg: string;
-  title: string;
-  subtitle: string;
-  time: string;
-  /** Needs attention now (sold out…): the only headlines shown in red. */
-  urgent?: boolean;
-}[] = [
-  {
-    id: 'h1',
-    tag: 'Élections',
-    icon: 'megaphone-outline',
-    tint: colors.purpleText,
-    bg: '#EEE8FF',
-    title: 'Élections des délégués',
-    subtitle: 'Vote jeudi 06 nov. · 8h-17h · salle polyvalente',
-    time: 'Jeu. 06',
-  },
-  {
-    id: 'h2',
-    tag: 'Resto 1',
-    icon: 'restaurant-outline',
-    tint: colors.dangerText,
-    bg: '#FDECEE',
-    title: 'Thiébou dieun épuisé',
-    urgent: true,
-    subtitle: 'Plus de portions ce midi · Vermicelle et Mafé yap encore servis',
-    time: '5 min',
-  },
-  {
-    id: 'h3',
-    tag: 'Resto 2',
-    icon: 'restaurant-outline',
-    tint: colors.orangeText,
-    bg: '#FFE8D4',
-    title: 'Omelette frites bientôt épuisée',
-    subtitle: 'Plus que 12 portions pour le dîner',
-    time: '20 min',
-  },
-  {
-    id: 'h4',
-    tag: 'Bourses',
-    icon: 'wallet-outline',
-    tint: colors.successText,
-    bg: '#E5F8EC',
-    title: 'Paiement des bourses le 05 nov.',
-    subtitle: 'Virement sur Wave et Orange Money',
-    time: 'Hier',
-  },
-];
-
-
-export const campusAlert = {
-  id: 'a1',
-  href: '/notifications',
-  icon: 'warning-outline' as Ionicon,
-  title: "Coupure d'eau · Village E",
-  subtitle: "Aujourd'hui de 10h à 16h",
-};
 
 // `href` = screen in the app, `url` = sponsor's website. With neither, the banner is display-only.
 export const adBanners: {
@@ -200,12 +138,16 @@ export type Caravan = {
   confirmed: boolean;
   bookingOpen: boolean;
   price: number;
-  /** My ticket for this departure, if any. */
+  /** Seats one student can buy: their own + companions. */
+  maxSeatsPerStudent: number;
+  /** The ticket I travel on for this departure, if any. */
   myTicketId: string | null;
-  /** I bought here and gave the ticket to a friend: one purchase per departure. */
+  /** I bought here and gave my own ticket to a friend. */
   purchasedHere: boolean;
-  /** A seat I took and haven't paid yet (held 10 min). */
-  myBooking: { id: string; seat: number; holdExpiresAt: string; payment: { reference: string; checkoutUrl: string | null } | null } | null;
+  /** Seats I can still buy here (the limit counts purchases, even given away). */
+  mySeatsLeft: number;
+  /** Seats I took and haven't paid yet (held 10 min). */
+  myBooking: HeldBooking | null;
 };
 
 export function caravanState(c: Pick<Caravan, 'booked' | 'minPassengers' | 'confirmed'>) {
@@ -243,46 +185,11 @@ export const paymentMethods: PaymentMethod[] = [
   { id: 'om', name: 'Orange Money', detail: 'Paiement mobile instantané', short: 'OM', bg: '#FF7900', logo: require('@/assets/images/payments/orange-money.png') },
 ];
 
-export type DishStatus = 'available' | 'low' | 'critical';
-
-// Service hours of the public restaurants (24h clock).
+// Usual service hours of the public restaurants (24h clock), for the local meal reminders. The menus' own hours come from the API.
 export const mealTimes = {
   lunch: { label: 'Déjeuner', start: 12, end: 15 },
   dinner: { label: 'Dîner', start: 19, end: 21 },
 };
-
-export const publicMenus = [
-  {
-    id: 'resto1',
-    name: 'Menu Resto 1',
-    count: 3,
-    hours: 'Ouvert · 12h-15h',
-    dishes: [
-      { name: 'Vermicelle', detail: 'Poulet · légumes', status: 'available' as DishStatus },
-      { name: 'Mafé yap', detail: 'Riz · sauce arachide', status: 'low' as DishStatus },
-      { name: 'Thiébou dieun', detail: 'Riz au poisson', status: 'critical' as DishStatus },
-    ],
-    dinner: [
-      { name: 'Couscous poulet', detail: 'Semoule · légumes', status: 'available' as DishStatus },
-      { name: 'Spaghetti viande', detail: 'Sauce tomate', status: 'available' as DishStatus },
-      { name: 'Niébé', detail: 'Haricots · pain', status: 'low' as DishStatus },
-    ],
-  },
-  {
-    id: 'resto2',
-    name: 'Menu Resto 2',
-    count: 2,
-    hours: 'Ouvert · 12h-15h',
-    dishes: [
-      { name: 'Pailla', detail: 'Riz · viande', status: 'available' as DishStatus },
-      { name: 'Thiou Carry', detail: 'Riz · poulet', status: 'available' as DishStatus },
-    ],
-    dinner: [
-      { name: 'Ndambé', detail: 'Haricots · pain', status: 'available' as DishStatus },
-      { name: 'Omelette frites', detail: 'Œufs · pommes de terre', status: 'critical' as DishStatus },
-    ],
-  },
-];
 
 /** A dish or a drink. `photo` is a local file (require) or an image URL. */
 export type RestoMenu = { id: string; name: string; detail: string; price: number; photo?: number | string };

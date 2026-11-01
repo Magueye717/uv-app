@@ -25,7 +25,7 @@ const TOTAL_STEPS = 3;
 const headings: Record<Step, { title: string; subtitle?: string }> = {
   1: { title: 'Identification', subtitle: 'Ton numéro étudiant et ton numéro de téléphone.' },
   2: { title: 'Vérification', subtitle: 'On vérifie que ce numéro est bien le tien.' },
-  3: { title: 'Ton profil', subtitle: 'Dernière étape : ton campus et ton logement.' },
+  3: { title: 'Ton profil', subtitle: 'Dernière étape : ton UFR, ta région, ton campus et ton logement.' },
 };
 
 // Inscription in 3 steps. All values live here so they survive going back and forth.
@@ -50,6 +50,8 @@ export default function RegisterScreen() {
     onCampus: true,
     village: null,
     room: '',
+    ufr: null,
+    region: null,
     password: '',
     confirm: '',
     accepted: false,
@@ -105,7 +107,7 @@ export default function RegisterScreen() {
   };
 
   const submitProfile = async () => {
-    if (!profile.campus || (profile.onCampus && !profile.village) || !verificationToken) return;
+    if (!profile.campus || !profile.ufr || !profile.region || (profile.onCampus && !profile.village) || !verificationToken) return;
     setSubmitting(true);
     setProfileError(null);
     try {
@@ -118,6 +120,8 @@ export default function RegisterScreen() {
         onCampus: profile.onCampus,
         village: profile.onCampus ? profile.village : null,
         room: profile.onCampus ? profile.room : null,
+        ufr: profile.ufr,
+        region: profile.region,
         password: profile.password,
       });
       await completeSignIn(tokens);

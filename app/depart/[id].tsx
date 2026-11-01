@@ -62,6 +62,8 @@ export default function Manifest() {
   const isBoarded = (p: Passenger) => p.admitted;
   const isAbsent = (p: Passenger) => !p.admitted && left.includes(p.pickupStopId);
   const boarded = passengers.filter(isBoarded).length;
+  // Packs saved before companions existed have no purchaser: each ticket is then its own buyer.
+  const buyers = new Set(passengers.map((p) => p.purchaser?.id ?? p.ticketId)).size;
   const absents = passengers.filter(isAbsent).length;
   const stopOf = (stops: CaravanStop[], stopId: string) => stops.find((s) => s.stopId === stopId);
   // First stop not left yet: where the bus is (or is heading).
@@ -88,7 +90,7 @@ export default function Manifest() {
           { text: 'Faire descendre', style: 'destructive', onPress: () => m.unboard(p).catch(fail('Action impossible')) },
         ])
       : // Manual check for a phone that won't show its QR (battery, broken screen).
-        Alert.alert(`Faire monter ${p.name} sans scanner ?`, 'Vérifie son nom sur sa carte étudiant.', [
+        Alert.alert(`Faire monter ${p.name} sans scanner ?`, p.companionOf ? `Accompagnant de ${p.companionOf} : vérifie son nom sur sa pièce d’identité.` : 'Vérifie son nom sur sa carte étudiant.', [
           { text: 'Annuler', style: 'cancel' },
           { text: 'Faire monter', onPress: () => m.board(p).catch(fail('Action impossible')) },
         ]);
@@ -136,6 +138,11 @@ export default function Manifest() {
             <Text style={styles.muted}>
               {c.date} · {c.time} · {c.vehicle.label} {c.plate}
             </Text>
+            {buyers < passengers.length && (
+              <Text style={styles.muted}>
+                {passengers.length} passagers · {buyers} acheteurs (certains ont réservé pour un accompagnant)
+              </Text>
+            )}
           </View>
           <View style={styles.stats}>
             <Stat value={passengers.length} label="réservés" />
@@ -194,14 +201,23 @@ export default function Manifest() {
                     badge={done ? 'Parti' : stop === current ? 'Ici' : undefined}
                   />
                   {list.length === 0 && <Text style={styles.muted}>Aucun passager ne monte ici : tu peux ne pas t’arrêter.</Text>}
-                  {list.map((p) => (
-                    <PassengerRow
-                      key={p.ticketId}
-                      p={p}
-                      detail={`Descend à ${stopOf(c.dropoffs, p.dropoffStopId)?.place ?? '?'}${p.transferred ? ' · billet transféré' : ''}`}
-                      status={isBoarded(p) ? 'boarded' : isAbsent(p) ? 'absent' : 'waiting'}
-                      onToggle={() => toggle(p)}
-                    />
+                  {groupedRows(list).map(({ p, header }) => (
+                    <View key={p.ticketId}>
+                      {header && <GroupHead name={header.name} size={header.size} />}
+                      <PassengerRow
+                        p={p}
+                        grouped={(p.groupSize ?? 1) > 1}
+                        detail={[
+                          p.companionOf ? `Accompagnant de ${p.companionOf}` : '',
+                          `Descend à ${stopOf(c.dropoffs, p.dropoffStopId)?.place ?? '?'}`,
+                          p.transferred && !p.companionOf ? 'billet transféré' : '',
+                        ]
+                          .filter(Boolean)
+                          .join(' · ')}
+                        status={isBoarded(p) ? 'boarded' : isAbsent(p) ? 'absent' : 'waiting'}
+                        onToggle={() => toggle(p)}
+                      />
+                    </View>
                   ))}
                   {!done && stop === current && (
                     <Pressable style={styles.leave} onPress={() => leave(stop)} accessibilityRole="button">
@@ -218,11 +234,12 @@ export default function Manifest() {
                 <View key={stop.stopId} style={[styles.card, shadow.card, styles.stop]}>
                   <StopHead stop={stop} estimated count={list.length ? `${list.length} descente${list.length > 1 ? 's' : ''}` : 'Personne'} />
                   {list.length === 0 && <Text style={styles.muted}>Aucune descente : arrêt facultatif.</Text>}
-                  {list.map((p) => (
+                  {groupedRows(list).map(({ p }) => (
                     <PassengerRow
                       key={p.ticketId}
                       p={p}
-                      detail={`Monté(e) à ${stopOf(c.pickups, p.pickupStopId)?.place ?? '?'}`}
+                      grouped={(p.groupSize ?? 1) > 1}
+                      detail={`${p.companionOf ? `Accompagnant de ${p.companionOf} · ` : ''}Monté(e) à ${stopOf(c.pickups, p.pickupStopId)?.place ?? '?'}`}
                       status={isBoarded(p) ? 'boarded' : isAbsent(p) ? 'absent' : 'waiting'}
                     />
                   ))}
@@ -244,6 +261,32 @@ export default function Manifest() {
   );
 }
 
+/**
+ * A stop's passengers with each buyer's seats together, in seat order of the buyer's first seat. The first row of a
+ * group of 2+ carries the header ("Moussa Diop · 2 billets").
+ */
+function groupedRows(list: Passenger[]) {
+  const key = (p: Passenger) => p.purchaser?.id ?? p.ticketId;
+  const first = new Map<string, number>();
+  for (const p of list) first.set(key(p), Math.min(first.get(key(p)) ?? Infinity, p.seat ?? 0));
+  const sorted = [...list].sort((a, b) => first.get(key(a))! - first.get(key(b))! || key(a).localeCompare(key(b)) || Number(!!a.companionOf) - Number(!!b.companionOf) || (a.seat ?? 0) - (b.seat ?? 0));
+  return sorted.map((p, i) => ({
+    p,
+    header: (p.groupSize ?? 1) > 1 && (i === 0 || key(sorted[i - 1]!) !== key(p)) ? { name: p.purchaser.name, size: p.groupSize } : null,
+  }));
+}
+
+function GroupHead({ name, size }: { name: string; size: number }) {
+  return (
+    <View style={styles.groupHead}>
+      <Ionicons name="people-outline" size={14} color={colors.primary} />
+      <Text style={styles.groupHeadText} numberOfLines={1}>
+        {name} · {size} billets
+      </Text>
+    </View>
+  );
+}
+
 /** Plain text for WhatsApp: the driver or a co-organizer keeps the list offline. */
 function manifestText(c: OrgCaravan, passengers: Passenger[]) {
   const lines = [
@@ -255,7 +298,10 @@ function manifestText(c: OrgCaravan, passengers: Passenger[]) {
   for (const s of c.pickups) {
     const list = passengers.filter((p) => p.pickupStopId === s.stopId);
     lines.push(`${s.time} · ${s.place} (${list.length})`);
-    for (const p of list) lines.push(`  ${p.seat}. ${p.name} → ${c.dropoffs.find((d) => d.stopId === p.dropoffStopId)?.place ?? '?'} · ${p.phone}`);
+    for (const p of list) {
+      const via = p.companionOf ? ` (accompagnant de ${p.companionOf})` : '';
+      lines.push(`  ${p.seat}. ${p.name}${via} → ${c.dropoffs.find((d) => d.stopId === p.dropoffStopId)?.place ?? '?'} · ${p.phone}`);
+    }
   }
   lines.push('', 'DESCENTES');
   for (const s of c.dropoffs) {
@@ -320,16 +366,19 @@ function PassengerRow({
   p,
   detail,
   status,
+  grouped,
   onToggle,
 }: {
   p: Passenger;
   detail: string;
   status: keyof typeof STATUS;
+  /** One of several seats bought by the same student: drawn under their group header. */
+  grouped?: boolean;
   onToggle?: () => void;
 }) {
   const s = STATUS[status];
   return (
-    <View style={styles.passenger}>
+    <View style={[styles.passenger, grouped && styles.passengerGrouped]}>
       <Pressable
         style={styles.passengerMain}
         onPress={onToggle}
@@ -397,6 +446,9 @@ const styles = StyleSheet.create({
   offline: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12, borderRadius: radii.md, backgroundColor: colors.warningBg },
   offlineText: { ...typo.small, flex: 1, color: colors.warningText },
   claim: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  groupHead: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingTop: 6, paddingBottom: 2 },
+  groupHeadText: { ...typo.label, color: colors.primary, flex: 1 },
+  passengerGrouped: { borderLeftWidth: 2, borderLeftColor: colors.primarySoft, paddingLeft: 8 },
   claimTitle: { ...typo.title, color: colors.navy },
   claimBtn: { paddingHorizontal: 14, minHeight: 40, borderRadius: radii.pill, backgroundColor: colors.primary, justifyContent: 'center' },
   claimBtnText: { ...typo.smallStrong, color: '#fff' },

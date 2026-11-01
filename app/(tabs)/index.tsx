@@ -4,10 +4,9 @@ import { useEffect } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { AdCarousel, AlertStrip, CaravanCard, RestoCard, TaxiCard } from '@/components/home';
+import { AdCarousel, AlertStrip, CaravanCard, Headlines, OriginPrompt, RestoCard, TaxiCard } from '@/components/home';
 import { InProgress } from '@/components/InProgress';
-import { headlines } from '@/constants/data';
-import { colors, shadow, radii, typo } from '@/constants/theme';
+import { colors, radii, typo } from '@/constants/theme';
 import { useAuth } from '@/context/AuthContext';
 import { bellLabel, useNotifications } from '@/context/NotificationsContext';
 import { setupNotifications } from '@/lib/notifications';
@@ -46,6 +45,7 @@ export default function HomeScreen() {
 
       <ScrollView contentContainerStyle={styles.body} showsVerticalScrollIndicator={false}>
         <AlertStrip />
+        <OriginPrompt />
         {/* What the student has going on comes first; the tabs cover the rest (no services grid). */}
         <InProgress />
         <CaravanCard />
@@ -54,25 +54,7 @@ export default function HomeScreen() {
 
         <AdCarousel />
 
-        <Text style={styles.section}>À la une</Text>
-        {headlines.map((h) => (
-          <View key={h.id} style={[styles.news, shadow.card]}>
-            {/* One neutral style; red only for what is urgent (a dish running out…). */}
-            <View style={[styles.newsIcon, { backgroundColor: h.urgent ? colors.dangerBg : colors.primarySoft }]}>
-              <Ionicons name={h.icon} size={18} color={h.urgent ? colors.dangerText : colors.primary} />
-            </View>
-            <View style={{ flex: 1 }}>
-              <View style={styles.newsTop}>
-                <Text style={[styles.newsTag, { color: h.urgent ? colors.dangerText : colors.muted2 }]}>{h.tag.toUpperCase()}</Text>
-                <Text style={styles.newsTime}>{h.time}</Text>
-              </View>
-              <Text style={styles.newsTitle}>{h.title}</Text>
-              <Text style={styles.muted} numberOfLines={2}>
-                {h.subtitle}
-              </Text>
-            </View>
-          </View>
-        ))}
+        <Headlines />
       </ScrollView>
     </View>
   );
@@ -117,25 +99,4 @@ const styles = StyleSheet.create({
     backgroundColor: colors.danger,
   },
   body: { padding: 20, paddingBottom: 32, gap: 14 },
-  muted: { ...typo.small, color: colors.muted2, marginTop: 2 },
-  section: { ...typo.h2, color: colors.navy, marginTop: 8 },
-  news: {
-    backgroundColor: colors.card,
-    borderRadius: radii.lg,
-    padding: 14,
-    flexDirection: 'row',
-    gap: 12,
-    alignItems: 'center',
-  },
-  newsIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: radii.sm,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  newsTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 2 },
-  newsTag: { ...typo.label, letterSpacing: 0.4 },
-  newsTime: { fontSize: 11, color: colors.muted2 },
-  newsTitle: { ...typo.bodyStrong, color: colors.navy },
 });

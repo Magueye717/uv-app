@@ -4,7 +4,8 @@ import { useEffect } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
 import { colors, typo } from '@/constants/theme';
-import { useAuth, type Space } from '@/context/AuthContext';
+import { spaceInfo } from '@/components/SpacesList';
+import { spaceHome, useAuth, type Space } from '@/context/AuthContext';
 
 /**
  * Switching space goes through this neutral screen: the guards flip while it's on screen, never under
@@ -21,12 +22,13 @@ export default function SwitchSpace() {
   }, [target, space, setSpace]);
 
   if (!target) return <Redirect href="/(auth)/welcome" />;
-  if (target === space) return <Redirect href={target === 'organizer' ? '/activites' : '/(tabs)'} />;
+  if (target === space) return <Redirect href={spaceHome(target)} />;
 
+  const info = spaceInfo(target, organizer?.name);
   return (
     <View style={styles.root}>
-      <Ionicons name={target === 'organizer' ? 'bus' : 'school'} size={40} color="#fff" />
-      <Text style={styles.text}>{target === 'organizer' ? `Espace ${organizer?.name ?? 'organisateur'}` : 'Espace étudiant'}</Text>
+      <Ionicons name={info.icon} size={40} color="#fff" />
+      <Text style={styles.text}>{info.title}</Text>
     </View>
   );
 }

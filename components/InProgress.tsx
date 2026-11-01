@@ -9,7 +9,7 @@ import { useLost } from '@/context/LostContext';
 import { orderSteps, useOrders } from '@/context/OrdersContext';
 import { useTaxi } from '@/context/TaxiContext';
 import { useCaravans } from '@/context/CaravansContext';
-import { dayLabel, hourLabel } from '@/features/caravans/api';
+import { byDeparture, dayLabel, hourLabel } from '@/features/caravans/api';
 import { useNow } from '@/lib/useNow';
 
 type Item = {
@@ -43,11 +43,14 @@ export function InProgress() {
     const step = orderSteps(o.mode).find((x) => x.key === o.status)!;
     items.push({ key: o.id, icon: 'receipt-outline', title: `Commande · ${findPrivateResto(o.restoId).resto.name}`, detail: step.title, href: `/commande/${o.id}` });
   }
-  for (const t of tickets) {
+  // One line per departure, even with a companion's ticket too.
+  const upcoming = tickets.filter((t) => t.status === 'active' && Date.parse(t.event.startsAt) >= now);
+  for (const group of byDeparture(upcoming)) {
+    const t = group[0]!;
     const at = Date.parse(t.event.startsAt);
-    if (t.status !== 'active' || at < now) continue;
     const pickup = Date.parse(t.details.pickup.at);
-    items.push({ key: t.id, icon: 'ticket-outline', title: `Caravane ${t.event.title}`, detail: `${dayLabel(at)} · ${hourLabel(pickup)} · ${t.details.pickup.place}`, href: `/billet/${t.id}` });
+    const count = group.length > 1 ? ` · ${group.length} billets` : '';
+    items.push({ key: t.id, icon: 'ticket-outline', title: `Caravane ${t.event.title}`, detail: `${dayLabel(at)} · ${hourLabel(pickup)} · ${t.details.pickup.place}${count}`, href: `/billet/${t.id}` });
   }
   const trip = taxi.activeTrip();
   if (trip) {

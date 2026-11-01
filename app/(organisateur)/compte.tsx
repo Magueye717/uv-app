@@ -3,13 +3,14 @@ import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-nati
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { OrganizerLine } from '@/components/caravan';
+import { SpacesList } from '@/components/SpacesList';
 import { colors, radii, shadow, typo } from '@/constants/theme';
 import { useAuth } from '@/context/AuthContext';
 
 const onWeb = (label: string) => Alert.alert(label, 'Ça se gère sur la plateforme web organisateur, depuis un ordinateur.');
 
 export default function Compte() {
-  const { user, organizer, spaces, switchSpace, logout } = useAuth();
+  const { user, organizer, logout } = useAuth();
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
@@ -33,19 +34,7 @@ export default function Compte() {
           </View>
         </View>
 
-        {spaces.includes('student') && (
-          // A student who also organizes: back to booking, tickets and food in one tap.
-          <Pressable style={[styles.card, shadow.card, styles.switch]} onPress={switchSpace} accessibilityRole="button">
-            <View style={styles.switchIcon}>
-              <Ionicons name="swap-horizontal" size={20} color="#fff" />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.rowTitle}>Passer à l’espace étudiant</Text>
-              <Text style={styles.muted}>Réserver, commander, tes billets</Text>
-            </View>
-            <Ionicons name="chevron-forward" size={18} color={colors.muted} />
-          </Pressable>
-        )}
+        <SpacesList />
 
         <View style={[styles.card, shadow.card, { paddingVertical: 4 }]}>
           <Row icon="people-outline" label="Mon équipe (chauffeurs, contrôleurs)" onPress={() => onWeb('Mon équipe')} />

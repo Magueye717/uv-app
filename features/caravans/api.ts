@@ -21,6 +21,8 @@ export type DepartureDto = {
   pickups: StopDto[];
   dropoffs: StopDto[];
   price: number;
+  /** Seats one student can buy here: their own + companions (2 by default). */
+  maxSeatsPerStudent: number;
   totalSeats: number;
   seatsFree: number;
   seatsBooked: number;
@@ -31,13 +33,28 @@ export type DepartureDto = {
   vehicle: { label: string; plate: string | null };
   myTicketId?: string | null;
   purchasedHere?: boolean;
-  myBooking?: { id: string; seat: number; holdExpiresAt: string; payment: { reference: string; checkoutUrl: string | null } | null } | null;
+  /** Seats I can still buy here (purchases count even once given away). */
+  mySeatsLeft?: number;
+  myBooking?: HeldBooking | null;
+};
+
+/** Someone travelling on a seat the student bought for them ("accompagnant"): no account needed. */
+export type PassengerDto = { name: string; phone: string };
+
+/** Seats taken and not paid yet (held 10 min), paid together. */
+export type HeldBooking = {
+  id: string;
+  seat: number;
+  holdExpiresAt: string;
+  seats: { seat: number; passenger: PassengerDto | null }[];
+  payment: { reference: string; checkoutUrl: string | null } | null;
 };
 
 export type OrgDepartureDto = DepartureDto & {
   vehicle: { label: string; plate: string };
   stopsLeft: { stopId: string; at: string }[];
-  counts: { booked: number; admitted: number };
+  /** Seats sold, students who bought them, passengers on board. */
+  counts: { booked: number; buyers: number; admitted: number };
   cancellation: { at: string; reason: string } | null;
   /** After departure: what the owner can collect, and the payout once asked for. */
   claim: { amount: number; payout: { id: string; status: string; amount: number } | null } | null;
@@ -52,8 +69,13 @@ export type BookingDto = {
   seat: number;
   holdExpiresAt: string;
   ticketId: string | null;
-  payment: { reference: string; status: string; checkoutUrl: string | null } | null;
+  /** Every seat paid with this booking's payment. */
+  seats: { seat: number; passenger: PassengerDto | null; status: string; ticketId: string | null }[];
+  payment: { reference: string; status: string; amount: number; checkoutUrl: string | null } | null;
 };
+
+/** One seat asked for: mine (no passenger), or a companion's. Seat omitted: picked by the server. */
+export type SeatRequest = { seat?: number; passenger?: PassengerDto };
 
 export type CancellationQuote = { allowed: true; fee: number; refund: number; freeUntil: string | null } | { allowed: false; reason: string };
 
@@ -91,6 +113,9 @@ export type TicketDto = {
   paidWith: PaymentMethod;
   event: { id: string; kind: string; title: string; startsAt: string; status: string; organizer: OrgCardDto };
   details: CaravanTicketDetails;
+  /** Companion ticket: who travels on it (I booked it for them). */
+  passenger: PassengerDto | null;
+  purchaser: { name: string; isMe: boolean };
   qr: string | null;
   admittedAt: string | null;
   cancellation: { at: string; fee: number; refundAmount: number; reason: string } | null;
@@ -99,7 +124,8 @@ export type TicketDto = {
   transfer: TransferDto | null;
 };
 
-export type IncomingTransferDto = TransferDto & { seat: number | null; event: TicketDto['event'] | null; details: CaravanTicketDetails };
+/** `forCompanion`: the sender booked this seat for me as their companion. */
+export type IncomingTransferDto = TransferDto & { seat: number | null; event: TicketDto['event'] | null; details: CaravanTicketDetails; forCompanion: boolean };
 
 export type ManifestDto = {
   departure: OrgDepartureDto;
@@ -114,8 +140,18 @@ export type ManifestDto = {
     admitted: boolean;
     admittedAt: string | null;
     transferred: boolean;
+    /** Companion ticket: the student who booked it (check an ID, not a student card). */
+    companionOf: string | null;
+    /** Seats bought by the same student are shown together. */
+    purchaser: { id: string; name: string };
+    groupSize: number;
   }[];
 };
+
+export type ManifestPassenger = ManifestDto['passengers'][number];
+
+/** The purchaser's other valid tickets on the departure, to board a pair together. */
+export type ScanGroup = { size: number; purchaser: string; others: { ticketId: string; seat: number | null; name: string; admitted: boolean }[] };
 
 export type ScanResultDto = {
   result: 'admitted' | 'duplicate' | 'rejected';
@@ -125,14 +161,17 @@ export type ScanResultDto = {
   reason: string | null;
   eventId: string | null;
   ticket: { id: string; code: string; seat: number | null } | null;
+  /** Who travels: the companion's name on a companion ticket. */
   holder: { name: string } | null;
+  companionOf: string | null;
+  group: ScanGroup | null;
 };
 
 export const caravansApi = {
   departures: (direction?: 'aller' | 'retour') => api<{ items: DepartureDto[] }>('GET', `/caravans/departures${direction ? `?direction=${direction}` : ''}`, auth),
   departure: (id: string) => api<DepartureDto>('GET', `/caravans/departures/${id}`, auth),
   seats: (id: string) => api<SeatMap>('GET', `/caravans/departures/${id}/seats`, auth),
-  book: (id: string, body: { seat?: number; pickupStopId: string; dropoffStopId: string; method: PaymentMethod }) =>
+  book: (id: string, body: { seats: SeatRequest[]; pickupStopId: string; dropoffStopId: string; method: PaymentMethod }) =>
     api<{ booking: BookingDto; payment: PaymentDto }>('POST', `/caravans/departures/${id}/bookings`, { ...auth, body: { ...body, returnUrl: paymentReturnUrl() } }),
   booking: (id: string) => api<BookingDto>('GET', `/caravans/bookings/${id}`, auth),
   release: (id: string) => api<void>('DELETE', `/caravans/bookings/${id}`, auth),
@@ -216,10 +255,19 @@ export function toCaravan(d: DepartureDto): Caravan {
     confirmed: d.confirmed,
     bookingOpen: d.bookingOpen,
     price: d.price,
+    maxSeatsPerStudent: d.maxSeatsPerStudent,
     myTicketId: d.myTicketId ?? null,
     purchasedHere: !!d.purchasedHere,
+    mySeatsLeft: d.mySeatsLeft ?? d.maxSeatsPerStudent,
     myBooking: d.myBooking ?? null,
   };
+}
+
+/** Tickets of the same departure together (my seat and my companions'), my own first, then by seat. */
+export function byDeparture(tickets: TicketDto[]): TicketDto[][] {
+  const groups = new Map<string, TicketDto[]>();
+  for (const t of tickets) groups.set(t.details.departureId, [...(groups.get(t.details.departureId) ?? []), t]);
+  return [...groups.values()].map((g) => g.sort((a, b) => Number(!!a.passenger) - Number(!!b.passenger) || (a.seat ?? 0) - (b.seat ?? 0)));
 }
 
 /** A unique id per scan, so a scan retried after a network error is recorded once. */
